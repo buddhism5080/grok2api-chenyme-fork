@@ -384,6 +384,10 @@ export function SettingsPage() {
                   <Input id="accounts-build-high-token-speed-threshold" type="number" min={1} max={100_000} step="1" disabled={!form.watch("routing.buildHighTokenSpeedAutoDisable")} {...form.register("routing.buildHighTokenSpeedThreshold", { valueAsNumber: true })} />
                 </SettingsField>
 
+                <SettingsField controlId="accounts-build-high-token-speed-overhead-ms" label={t("settings.accounts.buildHighTokenSpeedOverheadMS")} description={t("settings.accounts.buildHighTokenSpeedOverheadMSHelp")} error={form.formState.errors.routing?.buildHighTokenSpeedOverheadMS?.message}>
+                  <Input id="accounts-build-high-token-speed-overhead-ms" type="number" min={0} max={60_000} step="1" disabled={!form.watch("routing.buildHighTokenSpeedAutoDisable")} {...form.register("routing.buildHighTokenSpeedOverheadMS", { valueAsNumber: true })} />
+                </SettingsField>
+
                 <SettingsField controlId="accounts-build-high-token-speed-model-ids" label={t("settings.accounts.buildHighTokenSpeedModelIDs")} description={t("settings.accounts.buildHighTokenSpeedModelIDsHelp")} error={form.formState.errors.routing?.buildHighTokenSpeedModelIDs?.message}>
                   <Textarea id="accounts-build-high-token-speed-model-ids" rows={4} disabled={!form.watch("routing.buildHighTokenSpeedAutoDisable")} placeholder={t("settings.accounts.buildHighTokenSpeedModelIDsPlaceholder")} {...form.register("routing.buildHighTokenSpeedModelIDs")} />
                 </SettingsField>

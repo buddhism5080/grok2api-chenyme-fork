@@ -24,6 +24,7 @@ export type SettingsConfigDTO = {
     accountIsolatedConnections: boolean;
     buildHighTokenSpeedAutoDisable: boolean;
     buildHighTokenSpeedThreshold: number;
+    buildHighTokenSpeedOverheadMS: number;
     buildHighTokenSpeedModelIDs: string[];
     segmentedSelector: { enabled: boolean; minCandidates: number; windowSize: number };
   };
@@ -123,6 +124,7 @@ const settingsConfigValidator = hasShape({
     accountIsolatedConnections: isOptional(isBoolean),
     buildHighTokenSpeedAutoDisable: isOptional(isBoolean),
     buildHighTokenSpeedThreshold: isOptional(isNumber),
+    buildHighTokenSpeedOverheadMS: isOptional(isNumber),
     buildHighTokenSpeedModelIDs: isOptional(isArrayOf(isString)),
     segmentedSelector: isOptional(hasShape({ enabled: isBoolean, minCandidates: isNumber, windowSize: isNumber })),
   }),
@@ -173,6 +175,7 @@ function withSettingsDefaults(snapshot: SettingsSnapshotDTO): SettingsSnapshotDT
         accountIsolatedConnections: snapshot.config.routing.accountIsolatedConnections ?? false,
         buildHighTokenSpeedAutoDisable: snapshot.config.routing.buildHighTokenSpeedAutoDisable ?? false,
         buildHighTokenSpeedThreshold: snapshot.config.routing.buildHighTokenSpeedThreshold ?? 1000,
+        buildHighTokenSpeedOverheadMS: snapshot.config.routing.buildHighTokenSpeedOverheadMS ?? 2000,
         buildHighTokenSpeedModelIDs: snapshot.config.routing.buildHighTokenSpeedModelIDs ?? [],
         segmentedSelector: {
           enabled: segmentedSelector.enabled ?? false,
