@@ -460,10 +460,16 @@ func webProviderConfig(cfg config.Config) webprovider.Config {
 }
 
 func clearanceConfig(cfg config.Config) infraegress.ClearanceConfig {
+	// Use the Console API base host root (not /home). FlareSolverr needs the
+	// redirecting entry URL to reliably obtain .x.ai cf_clearance.
+	consoleTarget := strings.TrimRight(strings.TrimSpace(cfg.Provider.Console.BaseURL), "/")
+	if consoleTarget == "" {
+		consoleTarget = infraegress.DefaultConsoleClearanceTargetURL
+	}
 	return infraegress.ClearanceConfig{
 		Mode: cfg.Provider.Web.ClearanceMode, FlareSolverrURL: cfg.Provider.Web.FlareSolverrURL,
-		TargetURL: cfg.Provider.Web.BaseURL, Timeout: cfg.Provider.Web.ClearanceTimeout.Value(),
-		RefreshInterval: cfg.Provider.Web.ClearanceRefresh.Value(),
+		TargetURL: cfg.Provider.Web.BaseURL, ConsoleTargetURL: consoleTarget,
+		Timeout: cfg.Provider.Web.ClearanceTimeout.Value(), RefreshInterval: cfg.Provider.Web.ClearanceRefresh.Value(),
 	}
 }
 
