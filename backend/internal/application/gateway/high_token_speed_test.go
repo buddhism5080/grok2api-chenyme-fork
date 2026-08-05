@@ -14,11 +14,11 @@ func TestAuditOutputTokensPerSecondMatchesPanel(t *testing.T) {
 		StatusCode:   200,
 		FirstTokenMS: &first,
 		DurationMS:   1250,
-		OutputTokens: 1500,
+		OutputTokens: 80,
 	}
 	got, ok := auditOutputTokensPerSecond(record)
-	if !ok || got != 1200 {
-		t.Fatalf("got %v ok=%v, want 1200 true", got, ok)
+	if !ok || got != 80 {
+		t.Fatalf("got %v ok=%v, want 80 true", got, ok)
 	}
 }
 
@@ -33,10 +33,77 @@ func TestAuditOutputTokensPerSecondRequiresStreamSuccess(t *testing.T) {
 		{Streaming: true, StatusCode: 200, ErrorCode: "stream_closed", FirstTokenMS: &first, DurationMS: 1100, OutputTokens: 100},
 	}
 	for i, record := range cases {
-		got, ok := auditOutputTokensPerSecond(record)
-		if ok {
-			t.Fatalf("case %d unexpectedly measured speed=%v", i, got)
+		if _, ok := auditOutputTokensPerSecond(record); ok {
+			t.Fatalf("case %d unexpectedly measured", i)
 		}
+	}
+}
+
+func TestHighTokenSpeedForAutoDisableSkipsShortOutput(t *testing.T) {
+	first := int64(200)
+	record := audit.Record{
+		Streaming: true, StatusCode: 200, FirstTokenMS: &first,
+		DurationMS: 5000, OutputTokens: 999,
+	}
+	if _, _, ok := highTokenSpeedForAutoDisable(record); ok {
+		t.Fatal("output < 1000 must be skipped")
+	}
+}
+
+func TestHighTokenSpeedForAutoDisableUsesCappedOverheadNotTinyPostFirstWindow(t *testing.T) {
+	// Network delay: first byte arrives at 10s, then buffered tokens dump in 0.5s.
+	// Old panel formula: 2000 * 1000 / 500 = 4000 tok/s (false high).
+	// New: overhead capped at 2000ms → effective = 10500-2000 = 8500 → ~235 tok/s.
+	first := int64(10000)
+	record := audit.Record{
+		Streaming: true, StatusCode: 200, FirstTokenMS: &first,
+		DurationMS: 10500, OutputTokens: 2000,
+	}
+	speed, effectiveMS, ok := highTokenSpeedForAutoDisable(record)
+	if !ok {
+		t.Fatal("expected measurable speed")
+	}
+	if effectiveMS != 8500 {
+		t.Fatalf("effectiveMS = %d, want 8500", effectiveMS)
+	}
+	want := float64(2000) * 1000 / 8500
+	if speed != want {
+		t.Fatalf("speed = %v, want %v", speed, want)
+	}
+	if speed >= 1000 {
+		t.Fatalf("buffered dump must not look like high TPS: %v", speed)
+	}
+}
+
+func TestHighTokenSpeedForAutoDisableKeepsRealFastStreamHigh(t *testing.T) {
+	// Real fast stream: first token 200ms, finishes 2.2s, 3000 tokens.
+	// overhead = min(200, 2000) = 200 → effective = 2000 → 1500 tok/s.
+	first := int64(200)
+	record := audit.Record{
+		Streaming: true, StatusCode: 200, FirstTokenMS: &first,
+		DurationMS: 2200, OutputTokens: 3000,
+	}
+	speed, effectiveMS, ok := highTokenSpeedForAutoDisable(record)
+	if !ok || effectiveMS != 2000 {
+		t.Fatalf("effectiveMS=%d ok=%v", effectiveMS, ok)
+	}
+	want := float64(3000) * 1000 / 2000
+	if speed != want {
+		t.Fatalf("speed = %v, want %v", speed, want)
+	}
+	if speed < 1000 {
+		t.Fatalf("real high speed should still measure high: %v", speed)
+	}
+}
+
+func TestHighTokenSpeedForAutoDisableRequiresEffectiveWindow(t *testing.T) {
+	first := int64(100)
+	record := audit.Record{
+		Streaming: true, StatusCode: 200, FirstTokenMS: &first,
+		DurationMS: 500, OutputTokens: 2000, // effective = 400 < 1000
+	}
+	if _, _, ok := highTokenSpeedForAutoDisable(record); ok {
+		t.Fatal("effective window < 1s must be skipped")
 	}
 }
 
@@ -65,7 +132,7 @@ func TestMaybeDisableRequiresBuildProviderAndWatchedModel(t *testing.T) {
 	}
 	// No accounts service: calling with non-Build must no-op without panic.
 	service.maybeDisableBuildAccountForHighTokenSpeed(nil, record, accountdomain.Credential{Provider: accountdomain.ProviderWeb, ID: 1}, "grok-4.20")
-	// Below threshold must no-op.
+	// Below threshold / short output must no-op.
 	low := audit.Record{Streaming: true, StatusCode: 200, FirstTokenMS: &first, DurationMS: 2000, OutputTokens: 100, ModelPublicID: "grok-4.20", AccountID: uint64Ptr(1)}
 	service.maybeDisableBuildAccountForHighTokenSpeed(nil, low, accountdomain.Credential{Provider: accountdomain.ProviderBuild, ID: 1}, "grok-4.20")
 }
