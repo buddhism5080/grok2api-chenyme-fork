@@ -229,11 +229,11 @@ type RoutingConfig struct {
 	BuildHighTokenSpeedThreshold float64 `yaml:"buildHighTokenSpeedThreshold"`
 	// BuildHighTokenSpeedModelIDs lists public model IDs to watch; empty means no auto-disable.
 	BuildHighTokenSpeedModelIDs []string `yaml:"buildHighTokenSpeedModelIDs"`
-	// BuildHighTokenSpeedOverheadMS 是固定从总耗时中扣除的延迟预算（毫秒），默认 2000ms；不浮动。
-	// 计算方式：speed = outputTokens * 1000 / (durationMS - overheadMS)
-	// 公式与请求审计页面一致（dashboard / audit 面板的 outputTokensPerSecond 也是 outputTokens * 1000 / GenerationTotalMS）。
-	// 若想让 overhead 也支持 UI 配置，请在 settings/handler.go 和 settings/service.go 中暴露 BuildHighTokenSpeedOverheadMS 并在 UI 中显示阈值+overhead。
-	BuildHighTokenSpeedOverheadMS int64 `yaml:"buildHighTokenSpeedOverheadMS" default:"2000"`
+	// BuildHighTokenSpeedOverheadMS is a fixed delay budget subtracted from total
+	// request duration when computing auto-disable token speed (ms); default 2000.
+	// Formula: speed = outputTokens * 1000 / (durationMS - overheadMS)
+	// This differs from the audit panel (outputTokens * 1000 / (durationMS - firstTokenMS)).
+	BuildHighTokenSpeedOverheadMS int64 `yaml:"buildHighTokenSpeedOverheadMS"`
 	SegmentedSelectorEnabled    bool     `yaml:"segmentedSelectorEnabled"`
 	SegmentedMinCandidates      int      `yaml:"segmentedSelectorMinCandidates"`
 	SegmentedWindowSize         int      `yaml:"segmentedSelectorWindowSize"`

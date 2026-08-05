@@ -108,6 +108,7 @@ type routingConfigDTO struct {
 	AccountIsolatedConnections     *bool                       `json:"accountIsolatedConnections,omitempty"`
 	BuildHighTokenSpeedAutoDisable *bool                       `json:"buildHighTokenSpeedAutoDisable,omitempty"`
 	BuildHighTokenSpeedThreshold   *float64                    `json:"buildHighTokenSpeedThreshold,omitempty"`
+	BuildHighTokenSpeedOverheadMS  *int64                      `json:"buildHighTokenSpeedOverheadMS,omitempty"`
 	BuildHighTokenSpeedModelIDs    *[]string                   `json:"buildHighTokenSpeedModelIDs,omitempty"`
 	SegmentedSelector              *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
 }
@@ -237,6 +238,8 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 			BuildHighTokenSpeedAutoDisableProvided: value.Routing.BuildHighTokenSpeedAutoDisable != nil,
 			BuildHighTokenSpeedThreshold:           float64Value(value.Routing.BuildHighTokenSpeedThreshold),
 			BuildHighTokenSpeedThresholdProvided:   value.Routing.BuildHighTokenSpeedThreshold != nil,
+			BuildHighTokenSpeedOverheadMS:          int64Value(value.Routing.BuildHighTokenSpeedOverheadMS),
+			BuildHighTokenSpeedOverheadMSProvided:  value.Routing.BuildHighTokenSpeedOverheadMS != nil,
 			BuildHighTokenSpeedModelIDs:            stringSliceValue(value.Routing.BuildHighTokenSpeedModelIDs),
 			BuildHighTokenSpeedModelIDsProvided:    value.Routing.BuildHighTokenSpeedModelIDs != nil,
 		},
@@ -321,6 +324,7 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 				AccountIsolatedConnections:     boolPointer(config.Routing.AccountIsolatedConnections),
 				BuildHighTokenSpeedAutoDisable: boolPointer(config.Routing.BuildHighTokenSpeedAutoDisable),
 				BuildHighTokenSpeedThreshold:   float64Pointer(config.Routing.BuildHighTokenSpeedThreshold),
+				BuildHighTokenSpeedOverheadMS:  int64Pointer(config.Routing.BuildHighTokenSpeedOverheadMS),
 				BuildHighTokenSpeedModelIDs:    stringSlicePointer(config.Routing.BuildHighTokenSpeedModelIDs),
 				SegmentedSelector: &segmentedSelectorConfigDTO{
 					Enabled: config.Routing.SegmentedSelector.Enabled, MinCandidates: config.Routing.SegmentedSelector.MinCandidates,
@@ -364,6 +368,8 @@ func boolPointer(value bool) *bool { return &value }
 
 func float64Pointer(value float64) *float64 { return &value }
 
+func int64Pointer(value int64) *int64 { return &value }
+
 func boolValue(value *bool) bool {
 	if value == nil {
 		return false
@@ -372,6 +378,13 @@ func boolValue(value *bool) bool {
 }
 
 func float64Value(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func int64Value(value *int64) int64 {
 	if value == nil {
 		return 0
 	}
