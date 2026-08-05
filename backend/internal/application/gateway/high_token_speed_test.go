@@ -14,11 +14,11 @@ func TestAuditOutputTokensPerSecondMatchesPanel(t *testing.T) {
 		StatusCode:   200,
 		FirstTokenMS: &first,
 		DurationMS:   1250,
-		OutputTokens: 80,
+		OutputTokens: 1500,
 	}
 	got, ok := auditOutputTokensPerSecond(record)
-	if !ok || got != 80 {
-		t.Fatalf("got %v ok=%v, want 80 true", got, ok)
+	if !ok || got != 1200 {
+		t.Fatalf("got %v ok=%v, want 1200 true", got, ok)
 	}
 }
 
@@ -33,8 +33,9 @@ func TestAuditOutputTokensPerSecondRequiresStreamSuccess(t *testing.T) {
 		{Streaming: true, StatusCode: 200, ErrorCode: "stream_closed", FirstTokenMS: &first, DurationMS: 1100, OutputTokens: 100},
 	}
 	for i, record := range cases {
-		if _, ok := auditOutputTokensPerSecond(record); ok {
-			t.Fatalf("case %d unexpectedly measured", i)
+		got, ok := auditOutputTokensPerSecond(record)
+		if ok {
+			t.Fatalf("case %d unexpectedly measured speed=%v", i, got)
 		}
 	}
 }
