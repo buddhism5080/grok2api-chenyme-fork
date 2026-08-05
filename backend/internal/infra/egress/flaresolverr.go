@@ -19,6 +19,15 @@ import (
 
 const maxFlareSolverrResponseBytes = 2 << 20
 
+// Default clearance targets used when config fields are empty.
+const (
+	DefaultWebClearanceTargetURL = "https://grok.com"
+	// DefaultConsoleClearanceTargetURL is the Console site root. FlareSolverr must
+	// land on / (which redirects to /home) rather than /home directly; hitting
+	// /home first often fails to mint cf_clearance for .x.ai.
+	DefaultConsoleClearanceTargetURL = "https://console.x.ai"
+)
+
 var (
 	proxyCredentialPattern  = regexp.MustCompile(`(?i)\b(https?|socks4a?|socks5h?)://[^\s/@:]+:[^\s/@]+@`)
 	tunnelCredentialPattern = regexp.MustCompile(`(?i)\b(?:trojan|vless)://[^\s/@]+@|\b(?:ss|vmess)://[^\s,;]+`)
@@ -27,11 +36,17 @@ var (
 )
 
 type ClearanceConfig struct {
-	Mode            string
+	Mode string
 	FlareSolverrURL string
-	TargetURL       string
-	Timeout         time.Duration
-	RefreshInterval time.Duration
+	// TargetURL is the FlareSolverr page for Grok Web / WebAsset clearance
+	// (typically https://grok.com).
+	TargetURL string
+	// ConsoleTargetURL is the FlareSolverr page for Grok Console clearance
+	// (typically https://console.x.ai/). Prefer the site root over /home so CF
+	// issues .x.ai clearance during the redirect; do not share grok.com cookies.
+	ConsoleTargetURL string
+	Timeout          time.Duration
+	RefreshInterval  time.Duration
 }
 
 type clearanceSolution struct {
@@ -55,7 +70,7 @@ func (flaresolverrSolver) Solve(ctx context.Context, cfg ClearanceConfig, proxyU
 	}
 	target := strings.TrimSpace(cfg.TargetURL)
 	if target == "" {
-		target = "https://grok.com"
+		target = DefaultWebClearanceTargetURL
 	}
 	payload := map[string]any{
 		"cmd":        "request.get",
