@@ -161,6 +161,7 @@ export const settingsSchema = z.object({
     accountIsolatedConnections: z.boolean(),
     buildHighTokenSpeedAutoDisable: z.boolean(),
     buildHighTokenSpeedThreshold: z.number().min(1).max(100_000),
+    buildHighTokenSpeedOverheadMS: z.number().int().min(0).max(60_000),
     buildHighTokenSpeedModelIDs: z.string().superRefine((value, context) => {
       const models = parseModelIDs(value);
       if (models.length > 64 || models.some((model) => model.length === 0 || model.length > 128)) {
@@ -237,6 +238,7 @@ export function toSettingsForm(config: SettingsConfigDTO): SettingsForm {
       accountIsolatedConnections: config.routing.accountIsolatedConnections,
       buildHighTokenSpeedAutoDisable: config.routing.buildHighTokenSpeedAutoDisable,
       buildHighTokenSpeedThreshold: config.routing.buildHighTokenSpeedThreshold,
+      buildHighTokenSpeedOverheadMS: config.routing.buildHighTokenSpeedOverheadMS,
       buildHighTokenSpeedModelIDs: (config.routing.buildHighTokenSpeedModelIDs ?? []).join("\n"),
       segmentedSelector: config.routing.segmentedSelector,
     },
@@ -289,6 +291,7 @@ export function toSettingsDTO(config: SettingsForm): SettingsConfigDTO {
       accountIsolatedConnections: config.routing.accountIsolatedConnections,
       buildHighTokenSpeedAutoDisable: config.routing.buildHighTokenSpeedAutoDisable,
       buildHighTokenSpeedThreshold: config.routing.buildHighTokenSpeedThreshold,
+      buildHighTokenSpeedOverheadMS: config.routing.buildHighTokenSpeedOverheadMS,
       buildHighTokenSpeedModelIDs: parseModelIDs(config.routing.buildHighTokenSpeedModelIDs),
       segmentedSelector: config.routing.segmentedSelector,
     },
