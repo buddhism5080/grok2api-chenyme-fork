@@ -231,7 +231,7 @@ type RoutingConfig struct {
 	BuildHighTokenSpeedModelIDs []string `yaml:"buildHighTokenSpeedModelIDs"`
 	// BuildHighTokenSpeedOverheadMS is a fixed delay budget subtracted from total
 	// request duration when computing auto-disable token speed (ms); default 2000.
-	// Formula: speed = outputTokens * 1000 / (durationMS - overheadMS)
+	// Formula: speed = (outputTokens + reasoningTokens) * 1000 / (durationMS - overheadMS)
 	// This differs from the audit panel (outputTokens * 1000 / (durationMS - firstTokenMS)).
 	BuildHighTokenSpeedOverheadMS int64 `yaml:"buildHighTokenSpeedOverheadMS"`
 	SegmentedSelectorEnabled    bool     `yaml:"segmentedSelectorEnabled"`
