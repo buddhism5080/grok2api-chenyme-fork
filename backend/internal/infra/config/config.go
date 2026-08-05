@@ -222,7 +222,10 @@ type RoutingConfig struct {
 	BuildHighTokenSpeedThreshold float64 `yaml:"buildHighTokenSpeedThreshold"`
 	// BuildHighTokenSpeedModelIDs lists public model IDs to watch; empty means no auto-disable.
 	BuildHighTokenSpeedModelIDs []string `yaml:"buildHighTokenSpeedModelIDs"`
-	// BuildHighTokenSpeedOverheadMS is a fixed delay budget subtracted from total duration (ms); default 2000.
+	// BuildHighTokenSpeedOverheadMS is a fixed delay budget subtracted from total
+	// request duration when computing auto-disable token speed (ms); default 2000.
+	// Formula: speed = outputTokens * 1000 / (durationMS - overheadMS)
+	// This differs from the audit panel (outputTokens * 1000 / (durationMS - firstTokenMS)).
 	BuildHighTokenSpeedOverheadMS int64 `yaml:"buildHighTokenSpeedOverheadMS"`
 	SegmentedSelectorEnabled  bool     `yaml:"segmentedSelectorEnabled"`
 	SegmentedMinCandidates    int      `yaml:"segmentedSelectorMinCandidates"`

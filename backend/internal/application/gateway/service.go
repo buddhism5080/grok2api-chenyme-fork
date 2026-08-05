@@ -55,15 +55,16 @@ const modelCatalogRefreshTimeout = 30 * time.Second
 const accountStateWriteTimeout = 3 * time.Second
 const unlimitedRoutingAttempts = -1
 
-// High-token-speed auto-disable uses a conservative effective window so network
-// buffering cannot inflate tok/s:
-//   speed = outputTokens * 1000 / (durationMS - overheadMS)
-// overheadMS is floating: actual first-token latency, capped at a fixed budget.
-// Short replies and too-short effective windows are ignored to avoid false kills.
+// High-token-speed auto-disable uses a fixed overhead budget so network
+// buffering / late first-byte dumps cannot inflate tok/s the way the audit
+// panel formula does (duration - firstToken):
+//
+//	speed = outputTokens * 1000 / (durationMS - overheadMS)
+//
+// overheadMS is a configurable fixed delay budget (default 2000ms), not the
+// measured first-token latency. Short replies are ignored to avoid false kills.
 const highTokenSpeedMinOutputTokens int64 = 1000
-const highTokenSpeedOverheadCapMS int64 = 2000
-const highTokenSpeedDefaultOverheadMS int64 = 1500
-const highTokenSpeedMinEffectiveMS int64 = 1000
+const highTokenSpeedDefaultOverheadMS int64 = 2000
 
 type routingAttemptPolicy struct {
 	limit     int
@@ -218,9 +219,10 @@ type buildForbiddenReauthPolicy struct {
 }
 
 type buildHighTokenSpeedPolicy struct {
-	enabled   bool
-	threshold float64
-	models    map[string]struct{}
+	enabled    bool
+	threshold  float64
+	overheadMS int64
+	models     map[string]struct{}
 }
 
 func (s *Service) ConfigureMedia(repository repository.MediaJobRepository, concurrency int) {
@@ -459,9 +461,15 @@ func (s *Service) UpdateMarkBuildChatDeniedAsReauth(enabled bool) {
 
 // UpdateBuildHighTokenSpeedAutoDisable 热更新 Build 渠道异常高输出速度自动禁用策略。
 // 默认关闭；开启后仅对指定公开模型 ID 生效，阈值默认 1000 Token/s。
-func (s *Service) UpdateBuildHighTokenSpeedAutoDisable(enabled bool, threshold float64, modelIDs []string) {
+// overheadMS 为固定从总耗时扣除的延迟预算（毫秒），默认 2000；算法：
+//
+//	speed = outputTokens * 1000 / (durationMS - overheadMS)
+func (s *Service) UpdateBuildHighTokenSpeedAutoDisable(enabled bool, threshold float64, overheadMS int64, modelIDs []string) {
 	if threshold < 1 {
 		threshold = 1000
+	}
+	if overheadMS < 0 {
+		overheadMS = highTokenSpeedDefaultOverheadMS
 	}
 	models := make(map[string]struct{}, len(modelIDs))
 	for _, raw := range modelIDs {
@@ -473,9 +481,10 @@ func (s *Service) UpdateBuildHighTokenSpeedAutoDisable(enabled bool, threshold f
 	}
 	s.buildHighTokenSpeedMu.Lock()
 	s.buildHighTokenSpeedPolicy = buildHighTokenSpeedPolicy{
-		enabled:   enabled,
-		threshold: threshold,
-		models:    models,
+		enabled:    enabled,
+		threshold:  threshold,
+		overheadMS: overheadMS,
+		models:     models,
 	}
 	s.buildHighTokenSpeedMu.Unlock()
 }
@@ -1483,29 +1492,25 @@ func auditOutputTokensPerSecond(value audit.Record) (float64, bool) {
 	return float64(value.OutputTokens) * 1000 / float64(value.DurationMS-*value.FirstTokenMS), true
 }
 
-// highTokenSpeedForAutoDisable estimates generation throughput without trusting a
-// tiny post-first-token window. Buffered/delayed streams often dump many tokens
-// right after a late first byte; (duration-firstToken) then looks unrealistically
-// high. Instead:
+// highTokenSpeedForAutoDisable estimates generation throughput with a fixed
+// overhead budget. Buffered/delayed streams often dump many tokens right after a
+// late first byte; the audit-panel formula (duration-firstToken) then looks
+// unrealistically high. Instead:
 //
 //	effectiveMS = durationMS - overheadMS
-//	overheadMS  = min(firstTokenMS, overheadCap) when firstToken is known,
-//	              else a fixed default overhead
+//	speed       = outputTokens * 1000 / effectiveMS
 //
-// Skip when output is short or the effective window is too small.
-func highTokenSpeedForAutoDisable(value audit.Record) (speed float64, effectiveMS int64, ok bool) {
+// overheadMS is a fixed configurable delay budget (default 2000ms), not the
+// measured first-token latency. Skip when output is short or duration <= overhead.
+func highTokenSpeedForAutoDisable(value audit.Record, overheadMS int64) (speed float64, effectiveMS int64, ok bool) {
 	if !value.Streaming || value.StatusCode < 200 || value.StatusCode >= 300 || value.ErrorCode != "" || value.OutputTokens < highTokenSpeedMinOutputTokens || value.DurationMS <= 0 {
 		return 0, 0, false
 	}
-	overheadMS := highTokenSpeedDefaultOverheadMS
-	if value.FirstTokenMS != nil && *value.FirstTokenMS > 0 {
-		overheadMS = *value.FirstTokenMS
-		if overheadMS > highTokenSpeedOverheadCapMS {
-			overheadMS = highTokenSpeedOverheadCapMS
-		}
+	if overheadMS < 0 {
+		overheadMS = highTokenSpeedDefaultOverheadMS
 	}
 	effectiveMS = value.DurationMS - overheadMS
-	if effectiveMS < highTokenSpeedMinEffectiveMS {
+	if effectiveMS <= 0 {
 		return 0, effectiveMS, false
 	}
 	return float64(value.OutputTokens) * 1000 / float64(effectiveMS), effectiveMS, true
@@ -1528,7 +1533,7 @@ func (s *Service) maybeDisableBuildAccountForHighTokenSpeed(ctx context.Context,
 	if _, ok := policy.models[modelID]; !ok {
 		return
 	}
-	speed, effectiveMS, ok := highTokenSpeedForAutoDisable(record)
+	speed, effectiveMS, ok := highTokenSpeedForAutoDisable(record, policy.overheadMS)
 	if !ok || speed < policy.threshold {
 		return
 	}

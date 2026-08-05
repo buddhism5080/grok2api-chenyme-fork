@@ -107,6 +107,8 @@ type RoutingConfig struct {
 	BuildHighTokenSpeedAutoDisableProvided  bool
 	BuildHighTokenSpeedThreshold            float64
 	BuildHighTokenSpeedThresholdProvided    bool
+	BuildHighTokenSpeedOverheadMS           int64
+	BuildHighTokenSpeedOverheadMSProvided   bool
 	BuildHighTokenSpeedModelIDs             []string
 	BuildHighTokenSpeedModelIDsProvided     bool
 	SegmentedSelector                       SegmentedSelectorConfig
@@ -376,6 +378,10 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 	if value.Routing.BuildHighTokenSpeedThreshold != nil {
 		buildHighTokenSpeedThreshold = *value.Routing.BuildHighTokenSpeedThreshold
 	}
+	buildHighTokenSpeedOverheadMS := base.Routing.BuildHighTokenSpeedOverheadMS
+	if value.Routing.BuildHighTokenSpeedOverheadMS != nil {
+		buildHighTokenSpeedOverheadMS = *value.Routing.BuildHighTokenSpeedOverheadMS
+	}
 	buildHighTokenSpeedModelIDs := append([]string(nil), base.Routing.BuildHighTokenSpeedModelIDs...)
 	if value.Routing.BuildHighTokenSpeedModelIDs != nil {
 		buildHighTokenSpeedModelIDs = append([]string(nil), value.Routing.BuildHighTokenSpeedModelIDs...)
@@ -393,6 +399,7 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 		AccountIsolatedConnections:         accountIsolatedConnections,
 		BuildHighTokenSpeedAutoDisable:     buildHighTokenSpeedAutoDisable,
 		BuildHighTokenSpeedThreshold:       buildHighTokenSpeedThreshold,
+		BuildHighTokenSpeedOverheadMS:      buildHighTokenSpeedOverheadMS,
 		BuildHighTokenSpeedModelIDs:        normalizeBuildHighTokenSpeedModelIDs(buildHighTokenSpeedModelIDs),
 		SegmentedSelectorEnabled:           segmentedEnabled,
 		SegmentedMinCandidates:             segmentedMinCandidates,
@@ -434,6 +441,7 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 	accountIsolatedConnections := value.Routing.AccountIsolatedConnections
 	buildHighTokenSpeedAutoDisable := value.Routing.BuildHighTokenSpeedAutoDisable
 	buildHighTokenSpeedThreshold := value.Routing.BuildHighTokenSpeedThreshold
+	buildHighTokenSpeedOverheadMS := value.Routing.BuildHighTokenSpeedOverheadMS
 	return settingsdomain.Config{
 		Server: settingsdomain.ServerConfig{MaxConcurrentRequests: value.Server.MaxConcurrentRequests},
 		ProviderBuild: settingsdomain.ProviderBuildConfig{
@@ -476,6 +484,7 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 			AccountIsolatedConnections:     &accountIsolatedConnections,
 			BuildHighTokenSpeedAutoDisable: &buildHighTokenSpeedAutoDisable,
 			BuildHighTokenSpeedThreshold:   &buildHighTokenSpeedThreshold,
+			BuildHighTokenSpeedOverheadMS:  &buildHighTokenSpeedOverheadMS,
 			BuildHighTokenSpeedModelIDs:    append([]string(nil), value.Routing.BuildHighTokenSpeedModelIDs...),
 			SegmentedSelector: &settingsdomain.SegmentedSelectorConfig{
 				ActiveEnabled: value.Routing.SegmentedSelectorEnabled,
@@ -566,6 +575,9 @@ func mergeEditable(current config.Config, input EditableConfig) (config.Config, 
 	}
 	if input.Routing.BuildHighTokenSpeedThresholdProvided {
 		next.Routing.BuildHighTokenSpeedThreshold = input.Routing.BuildHighTokenSpeedThreshold
+	}
+	if input.Routing.BuildHighTokenSpeedOverheadMSProvided {
+		next.Routing.BuildHighTokenSpeedOverheadMS = input.Routing.BuildHighTokenSpeedOverheadMS
 	}
 	if input.Routing.BuildHighTokenSpeedModelIDsProvided {
 		next.Routing.BuildHighTokenSpeedModelIDs = normalizeBuildHighTokenSpeedModelIDs(input.Routing.BuildHighTokenSpeedModelIDs)
@@ -692,6 +704,8 @@ func toEditable(cfg config.Config) EditableConfig {
 			BuildHighTokenSpeedAutoDisableProvided:  true,
 			BuildHighTokenSpeedThreshold:            cfg.Routing.BuildHighTokenSpeedThreshold,
 			BuildHighTokenSpeedThresholdProvided:    true,
+			BuildHighTokenSpeedOverheadMS:           cfg.Routing.BuildHighTokenSpeedOverheadMS,
+			BuildHighTokenSpeedOverheadMSProvided:   true,
 			BuildHighTokenSpeedModelIDs:             append([]string(nil), cfg.Routing.BuildHighTokenSpeedModelIDs...),
 			BuildHighTokenSpeedModelIDsProvided:     true,
 			SegmentedSelector: SegmentedSelectorConfig{
