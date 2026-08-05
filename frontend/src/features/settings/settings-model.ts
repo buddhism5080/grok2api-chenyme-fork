@@ -237,7 +237,7 @@ export function toSettingsForm(config: SettingsConfigDTO): SettingsForm {
       accountIsolatedConnections: config.routing.accountIsolatedConnections,
       buildHighTokenSpeedAutoDisable: config.routing.buildHighTokenSpeedAutoDisable,
       buildHighTokenSpeedThreshold: config.routing.buildHighTokenSpeedThreshold,
-      buildHighTokenSpeedModelIDs: config.routing.buildHighTokenSpeedModelIDs.join("\n"),
+      buildHighTokenSpeedModelIDs: (config.routing.buildHighTokenSpeedModelIDs ?? []).join("\n"),
       segmentedSelector: config.routing.segmentedSelector,
     },
     audit: {
