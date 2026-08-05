@@ -2079,7 +2079,8 @@ func TestFlareSolverrPrewarmsDirectWebEgressWhenNoNodesExist(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lease.Release()
-	if solver.calls != 1 || lease.CFCookies != "cf_clearance=value-1" {
+	// force=true prewarms both web and console direct clearances when no nodes exist.
+	if solver.calls != 2 || lease.CFCookies != "cf_clearance=value-1" {
 		t.Fatalf("calls=%d cookies=%q", solver.calls, lease.CFCookies)
 	}
 }
@@ -2586,6 +2587,8 @@ type blockingEgressRepository struct {
 type clearanceSolverStub struct {
 	calls     int
 	proxyURL  string
+	targetURL string
+	targets   []string
 	err       error
 	noCookies bool
 }
@@ -2596,9 +2599,11 @@ func (alwaysAcquiredDistributedLock) Acquire(context.Context, string, time.Durat
 	return func() {}, true, nil
 }
 
-func (s *clearanceSolverStub) Solve(_ context.Context, _ ClearanceConfig, proxyURL string) (clearanceSolution, error) {
+func (s *clearanceSolverStub) Solve(_ context.Context, cfg ClearanceConfig, proxyURL string) (clearanceSolution, error) {
 	s.calls++
 	s.proxyURL = proxyURL
+	s.targetURL = cfg.TargetURL
+	s.targets = append(s.targets, cfg.TargetURL)
 	if s.err != nil {
 		return clearanceSolution{}, s.err
 	}
@@ -2986,3 +2991,111 @@ func TestAccountIsolationHotUpdateEvictsOldPools(t *testing.T) {
 		t.Fatal("disabling isolation did not restore the shared pool")
 	}
 }
+
+func TestConsoleScopeSolvesConsoleClearanceTarget(t *testing.T) {
+	cipher, err := security.NewCipher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	solver := &clearanceSolverStub{}
+	manager := NewManager(egressRepositoryTestStub{}, cipher)
+	manager.solver = solver
+	manager.UpdateClearanceConfig(ClearanceConfig{
+		Mode: "flaresolverr", FlareSolverrURL: "http://solver",
+		TargetURL: "https://grok.com", ConsoleTargetURL: "https://console.x.ai",
+		Timeout: time.Second, RefreshInterval: time.Hour,
+	})
+
+	console, err := manager.AcquireCredential(context.Background(), domain.ScopeConsole, accountdomain.Credential{
+		ID: 7, Provider: accountdomain.ProviderConsole, AuthType: accountdomain.AuthTypeSSO,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer console.Release()
+	if solver.calls != 1 || solver.targetURL != "https://console.x.ai" || console.CFCookies != "cf_clearance=value-1" {
+		t.Fatalf("console solve: calls=%d target=%q cookies=%q", solver.calls, solver.targetURL, console.CFCookies)
+	}
+
+	web, err := manager.AcquireCredential(context.Background(), domain.ScopeWeb, accountdomain.Credential{
+		ID: 8, Provider: accountdomain.ProviderWeb, AuthType: accountdomain.AuthTypeSSO,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer web.Release()
+	if solver.calls != 2 || solver.targetURL != "https://grok.com" || web.CFCookies != "cf_clearance=value-2" {
+		t.Fatalf("web solve: calls=%d target=%q cookies=%q", solver.calls, solver.targetURL, web.CFCookies)
+	}
+	if console.CFCookies == web.CFCookies {
+		t.Fatal("web and console clearances shared the same cookie sample")
+	}
+}
+
+func TestConsoleClearanceDoesNotOverwriteWebNodeCookie(t *testing.T) {
+	cipher, err := security.NewCipher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy, err := cipher.Encrypt("http://proxy.example:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := &mutableEgressRepository{node: domain.Node{
+		ID: 1, Name: "web", Scope: domain.ScopeWeb, Enabled: true, Health: 1, EncryptedProxyURL: proxy,
+	}}
+	solver := &clearanceSolverStub{}
+	manager := NewManager(repository, cipher)
+	manager.solver = solver
+	manager.UpdateClearanceConfig(ClearanceConfig{
+		Mode: "flaresolverr", FlareSolverrURL: "http://solver",
+		TargetURL: "https://grok.com", ConsoleTargetURL: "https://console.x.ai",
+		Timeout: time.Second, RefreshInterval: time.Hour,
+	})
+
+	// Console may fall back to a Web-scoped node; solve console clearance in memory
+	// only so the node's persisted grok cookie slot is not overwritten.
+	console, err := manager.AcquireCredential(context.Background(), domain.ScopeConsole, accountdomain.Credential{
+		ID: 9, Provider: accountdomain.ProviderConsole, AuthType: accountdomain.AuthTypeSSO,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	console.Release()
+	if solver.calls != 1 || solver.targetURL != "https://console.x.ai" {
+		t.Fatalf("console fallback solve = calls=%d target=%q", solver.calls, solver.targetURL)
+	}
+	if repository.updates != 0 || repository.node.EncryptedCloudflareCookie != "" {
+		t.Fatalf("console clearance was persisted onto web node: updates=%d cookie=%q", repository.updates, repository.node.EncryptedCloudflareCookie)
+	}
+
+	web, err := manager.AcquireCredential(context.Background(), domain.ScopeWeb, accountdomain.Credential{
+		ID: 10, Provider: accountdomain.ProviderWeb, AuthType: accountdomain.AuthTypeSSO,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	web.Release()
+	if solver.calls != 2 || solver.targetURL != "https://grok.com" {
+		t.Fatalf("web solve = calls=%d target=%q", solver.calls, solver.targetURL)
+	}
+	if repository.node.EncryptedCloudflareCookie == "" {
+		t.Fatal("web clearance was not persisted onto web node")
+	}
+}
+
+func TestClearanceTargetURLDefaults(t *testing.T) {
+	if got := clearanceTargetURL(ClearanceConfig{}, domain.ScopeWeb); got != DefaultWebClearanceTargetURL {
+		t.Fatalf("web default = %q", got)
+	}
+	if got := clearanceTargetURL(ClearanceConfig{}, domain.ScopeConsole); got != DefaultConsoleClearanceTargetURL {
+		t.Fatalf("console default = %q", got)
+	}
+	if DefaultConsoleClearanceTargetURL != "https://console.x.ai" {
+		t.Fatalf("console default must be site root, got %q", DefaultConsoleClearanceTargetURL)
+	}
+	if strings.HasSuffix(DefaultConsoleClearanceTargetURL, "/home") {
+		t.Fatal("console clearance target must not land on /home directly")
+	}
+}
+
