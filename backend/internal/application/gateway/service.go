@@ -59,7 +59,7 @@ const unlimitedRoutingAttempts = -1
 // buffering / late first-byte dumps cannot inflate tok/s the way the audit
 // panel formula does (duration - firstToken):
 //
-//	speed = outputTokens * 1000 / (durationMS - overheadMS)
+//	speed = (outputTokens + reasoningTokens) * 1000 / (durationMS - overheadMS)
 //
 // overheadMS is a configurable fixed delay budget (default 2000ms), not the
 // measured first-token latency. Short replies are ignored to avoid false kills.
@@ -463,7 +463,7 @@ func (s *Service) UpdateMarkBuildChatDeniedAsReauth(enabled bool) {
 // 默认关闭；开启后仅对指定公开模型 ID 生效，阈值默认 1000 Token/s。
 // overheadMS 为固定从总耗时扣除的延迟预算（毫秒），默认 2000；算法：
 //
-//	speed = outputTokens * 1000 / (durationMS - overheadMS)
+//	speed = (outputTokens + reasoningTokens) * 1000 / (durationMS - overheadMS)
 func (s *Service) UpdateBuildHighTokenSpeedAutoDisable(enabled bool, threshold float64, overheadMS int64, modelIDs []string) {
 	if threshold < 1 {
 		threshold = 1000
@@ -1497,13 +1497,15 @@ func auditOutputTokensPerSecond(value audit.Record) (float64, bool) {
 // late first byte; the audit-panel formula (duration-firstToken) then looks
 // unrealistically high. Instead:
 //
+//	tokens      = outputTokens + reasoningTokens
 //	effectiveMS = durationMS - overheadMS
-//	speed       = outputTokens * 1000 / effectiveMS
+//	speed       = tokens * 1000 / effectiveMS
 //
 // overheadMS is a fixed configurable delay budget (default 2000ms), not the
-// measured first-token latency. Skip when output is short or duration <= overhead.
+// measured first-token latency. Skip when combined tokens are short or duration <= overhead.
 func highTokenSpeedForAutoDisable(value audit.Record, overheadMS int64) (speed float64, effectiveMS int64, ok bool) {
-	if !value.Streaming || value.StatusCode < 200 || value.StatusCode >= 300 || value.ErrorCode != "" || value.OutputTokens < highTokenSpeedMinOutputTokens || value.DurationMS <= 0 {
+	tokens := value.OutputTokens + value.ReasoningTokens
+	if !value.Streaming || value.StatusCode < 200 || value.StatusCode >= 300 || value.ErrorCode != "" || tokens < highTokenSpeedMinOutputTokens || value.DurationMS <= 0 {
 		return 0, 0, false
 	}
 	if overheadMS < 0 {
@@ -1513,7 +1515,7 @@ func highTokenSpeedForAutoDisable(value audit.Record, overheadMS int64) (speed f
 	if effectiveMS <= 0 {
 		return 0, effectiveMS, false
 	}
-	return float64(value.OutputTokens) * 1000 / float64(effectiveMS), effectiveMS, true
+	return float64(tokens) * 1000 / float64(effectiveMS), effectiveMS, true
 }
 
 func (s *Service) maybeDisableBuildAccountForHighTokenSpeed(ctx context.Context, record audit.Record, credential accountdomain.Credential, publicModel string) {
@@ -1537,12 +1539,12 @@ func (s *Service) maybeDisableBuildAccountForHighTokenSpeed(ctx context.Context,
 	if !ok || speed < policy.threshold {
 		return
 	}
-	reason := fmt.Sprintf("Build high token speed auto-disable: model=%s speed=%.1f tok/s threshold=%.1f output=%d effective_ms=%d", modelID, speed, policy.threshold, record.OutputTokens, effectiveMS)
+	reason := fmt.Sprintf("Build high token speed auto-disable: model=%s speed=%.1f tok/s threshold=%.1f output=%d reasoning=%d effective_ms=%d", modelID, speed, policy.threshold, record.OutputTokens, record.ReasoningTokens, effectiveMS)
 	if err := s.accounts.DisableForHighTokenSpeed(ctx, credential.ID, reason); err != nil {
-		s.logger.Warn("build_high_token_speed_disable_failed", "request_id", record.RequestID, "account_id", credential.ID, "model", modelID, "speed", speed, "threshold", policy.threshold, "output_tokens", record.OutputTokens, "effective_ms", effectiveMS, "error", err)
+		s.logger.Warn("build_high_token_speed_disable_failed", "request_id", record.RequestID, "account_id", credential.ID, "model", modelID, "speed", speed, "threshold", policy.threshold, "output_tokens", record.OutputTokens, "reasoning_tokens", record.ReasoningTokens, "effective_ms", effectiveMS, "error", err)
 		return
 	}
-	s.logger.Warn("build_high_token_speed_account_disabled", "request_id", record.RequestID, "account_id", credential.ID, "account_name", credential.Name, "model", modelID, "speed", speed, "threshold", policy.threshold, "output_tokens", record.OutputTokens, "effective_ms", effectiveMS)
+	s.logger.Warn("build_high_token_speed_account_disabled", "request_id", record.RequestID, "account_id", credential.ID, "account_name", credential.Name, "model", modelID, "speed", speed, "threshold", policy.threshold, "output_tokens", record.OutputTokens, "reasoning_tokens", record.ReasoningTokens, "effective_ms", effectiveMS)
 }
 
 func (s *Service) markSSOCredentialRejected(ctx context.Context, credential accountdomain.Credential, reason string) {
