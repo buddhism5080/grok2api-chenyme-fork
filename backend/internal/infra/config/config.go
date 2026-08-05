@@ -229,6 +229,8 @@ type RoutingConfig struct {
 	BuildHighTokenSpeedThreshold float64 `yaml:"buildHighTokenSpeedThreshold"`
 	// BuildHighTokenSpeedModelIDs lists public model IDs to watch; empty means no auto-disable.
 	BuildHighTokenSpeedModelIDs []string `yaml:"buildHighTokenSpeedModelIDs"`
+	// BuildHighTokenSpeedOverheadMS is a fixed delay budget subtracted from total duration (ms); default 2000.
+	BuildHighTokenSpeedOverheadMS int64 `yaml:"buildHighTokenSpeedOverheadMS"`
 	SegmentedSelectorEnabled    bool     `yaml:"segmentedSelectorEnabled"`
 	SegmentedMinCandidates      int      `yaml:"segmentedSelectorMinCandidates"`
 	SegmentedWindowSize         int      `yaml:"segmentedSelectorWindowSize"`
@@ -682,6 +684,9 @@ func (c Config) Validate() error {
 	if c.Routing.BuildHighTokenSpeedThreshold < 1 || c.Routing.BuildHighTokenSpeedThreshold > 100000 {
 		return errors.New("routing.buildHighTokenSpeedThreshold 必须在 1 到 100000 之间")
 	}
+	if c.Routing.BuildHighTokenSpeedOverheadMS < 0 || c.Routing.BuildHighTokenSpeedOverheadMS > 60000 {
+		return errors.New("routing.buildHighTokenSpeedOverheadMS 必须在 0 到 60000 之间")
+	}
 	if len(c.Routing.BuildHighTokenSpeedModelIDs) > 64 {
 		return errors.New("routing.buildHighTokenSpeedModelIDs 最多支持 64 个模型")
 	}
@@ -937,6 +942,7 @@ func defaultConfig() Config {
 			BuildHighTokenSpeedAutoDisable: false,
 			BuildHighTokenSpeedThreshold:   1000,
 			BuildHighTokenSpeedModelIDs:    nil,
+			BuildHighTokenSpeedOverheadMS:  2000,
 			SegmentedSelectorEnabled:       true,
 			SegmentedMinCandidates:         3000,
 			SegmentedWindowSize:            64,
