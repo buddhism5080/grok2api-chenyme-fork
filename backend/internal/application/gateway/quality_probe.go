@@ -199,20 +199,12 @@ func normalizeQualityProbeRequestError(err error) error {
 	return err
 }
 
-// qualityProbeOutputTokensPerSecond 更稳健的计算，避免网络首字延迟导致分母过大。
-// 规则：
-// 1. 总输出 < 1000 tokens 时跳过禁用（短响应几乎不反映真实速度）。
-// 2. 生成时间小于 800ms（最短合理窗口）时，也跳过或标记可疑。
+// qualityProbeOutputTokensPerSecond matches the audit panel formula:
+// outputTokens * 1000 / (durationMS - firstTokenMS).
 func qualityProbeOutputTokensPerSecond(outputTokens, durationMS, firstTokenMS int64) float64 {
-	if outputTokens <= 0 || durationMS <= 0 {
-		return 0
-	}
 	generationMS := durationMS - firstTokenMS
-	if generationMS < 1 {
-		generationMS = 1
-	}
-	if outputTokens < 1000 || generationMS < 800 {
-		return 0 // 短响应或首字延迟过长，不判定高速度
+	if outputTokens <= 0 || generationMS <= 0 {
+		return 0
 	}
 	return float64(outputTokens) * 1000 / float64(generationMS)
 }
