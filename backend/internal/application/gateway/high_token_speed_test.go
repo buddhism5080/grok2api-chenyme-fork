@@ -48,6 +48,12 @@ func TestHighTokenSpeedForAutoDisableSkipsShortOutput(t *testing.T) {
 	if _, _, ok := highTokenSpeedForAutoDisable(record, 2000); ok {
 		t.Fatal("output < 1000 must be skipped")
 	}
+	// Short output alone is still skipped even when reasoning is large but sum stays under threshold.
+	record.OutputTokens = 400
+	record.ReasoningTokens = 500
+	if _, _, ok := highTokenSpeedForAutoDisable(record, 2000); ok {
+		t.Fatal("output+reasoning < 1000 must be skipped")
+	}
 }
 
 func TestHighTokenSpeedForAutoDisableUsesFixedOverheadNotAuditFirstToken(t *testing.T) {
@@ -72,6 +78,27 @@ func TestHighTokenSpeedForAutoDisableUsesFixedOverheadNotAuditFirstToken(t *test
 	}
 	if speed >= 1000 {
 		t.Fatalf("buffered dump must not look like high TPS: %v", speed)
+	}
+}
+
+func TestHighTokenSpeedForAutoDisableIncludesReasoningTokens(t *testing.T) {
+	// output 800 + reasoning 1200 = 2000 tokens over effective 2000ms → 1000 tok/s.
+	// Without reasoning, output alone would be skipped (< 1000).
+	first := int64(100)
+	record := audit.Record{
+		Streaming: true, StatusCode: 200, FirstTokenMS: &first,
+		DurationMS: 4000, OutputTokens: 800, ReasoningTokens: 1200,
+	}
+	speed, effectiveMS, ok := highTokenSpeedForAutoDisable(record, 2000)
+	if !ok {
+		t.Fatal("expected measurable speed with output+reasoning")
+	}
+	if effectiveMS != 2000 {
+		t.Fatalf("effectiveMS = %d, want 2000", effectiveMS)
+	}
+	want := float64(2000) * 1000 / 2000
+	if speed != want {
+		t.Fatalf("speed = %v, want %v (must include reasoning)", speed, want)
 	}
 }
 
