@@ -1468,7 +1468,11 @@ func auditOutputTokensPerSecond(value audit.Record) (float64, bool) {
 	if !value.Streaming || value.StatusCode < 200 || value.StatusCode >= 300 || value.ErrorCode != "" || value.FirstTokenMS == nil || value.OutputTokens <= 0 || value.DurationMS <= *value.FirstTokenMS {
 		return 0, false
 	}
-	return float64(value.OutputTokens) * 1000 / float64(value.DurationMS-*value.FirstTokenMS), true
+	speed := qualityProbeOutputTokensPerSecond(value.OutputTokens, value.DurationMS, *value.FirstTokenMS)
+	if speed < 1 || speed < 1000 {
+		return 0, false
+	}
+	return speed, true
 }
 
 func (s *Service) maybeDisableBuildAccountForHighTokenSpeed(ctx context.Context, record audit.Record, credential accountdomain.Credential, publicModel string) {
