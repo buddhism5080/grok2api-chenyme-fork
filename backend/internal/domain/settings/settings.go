@@ -116,8 +116,8 @@ type RoutingConfig struct {
 	// BuildHighTokenSpeedModelIDs 需要监控的公开模型 ID（如 grok-4.20）；空列表表示不生效。
 	BuildHighTokenSpeedModelIDs []string
 	// BuildHighTokenSpeedOverheadMS 固定从总耗时扣除的延迟预算（毫秒），默认 2000。
-	// 自动禁用速度：speed = outputTokens * 1000 / (durationMS - overheadMS)
-	// 与审计页不同：审计页用 durationMS - firstTokenMS。
+	// 自动禁用速度：speed = (outputTokens + reasoningTokens) * 1000 / (durationMS - overheadMS)
+	// 与审计页不同：审计页用 durationMS - firstTokenMS，且通常只计 outputTokens。
 	BuildHighTokenSpeedOverheadMS *int64
 	SegmentedSelector *SegmentedSelectorConfig
 }
