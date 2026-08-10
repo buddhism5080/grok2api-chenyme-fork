@@ -20,15 +20,16 @@ var (
 
 // ProviderBuildConfig 是管理接口使用的 Provider 可编辑输入。
 type ProviderBuildConfig struct {
-	BaseURL               string
-	FallbackBaseURL       string
-	ClientVersion         string
-	ClientIdentifier      string
-	TokenAuth             string
-	UserAgent             string
-	ResponseHeaderTimeout string
-	StreamIdleTimeout     string
-	StreamFirstCharTimeout string
+	BaseURL                       string
+	FallbackBaseURL               string
+	ClientVersion                 string
+	ClientIdentifier              string
+	TokenAuth                     string
+	UserAgent                     string
+	ResponseHeaderTimeout         string
+	StreamIdleTimeout             string
+	StreamFirstCharTimeoutEnabled bool
+	StreamFirstCharTimeout        string
 }
 
 // ProviderBuildRecommendation 表示当前网关已完成兼容回归的 Grok Build 协议基线。
@@ -323,7 +324,8 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 		TokenAuth: value.ProviderBuild.TokenAuth, UserAgent: value.ProviderBuild.UserAgent,
 		ResponseHeaderTimeout: config.Duration(value.ProviderBuild.ResponseHeaderTimeout),
 		StreamIdleTimeout:     config.Duration(value.ProviderBuild.StreamIdleTimeout),
-		StreamFirstCharTimeout: config.Duration(value.ProviderBuild.StreamFirstCharTimeout),
+		StreamFirstCharTimeoutEnabled: value.ProviderBuild.StreamFirstCharTimeoutEnabled,
+		StreamFirstCharTimeout:        config.Duration(value.ProviderBuild.StreamFirstCharTimeout),
 	}
 	if value.ProviderBuild.ResponseHeaderTimeout <= 0 {
 		base.Provider.Build.ResponseHeaderTimeout = config.Duration(settingsdomain.DefaultBuildResponseHeaderTimeout)
@@ -476,7 +478,8 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 			TokenAuth: value.Provider.Build.TokenAuth, UserAgent: value.Provider.Build.UserAgent,
 			ResponseHeaderTimeout: value.Provider.Build.ResponseHeaderTimeout.Value(),
 			StreamIdleTimeout:     value.Provider.Build.StreamIdleTimeout.Value(),
-			StreamFirstCharTimeout: value.Provider.Build.StreamFirstCharTimeout.Value(),
+			StreamFirstCharTimeoutEnabled: value.Provider.Build.StreamFirstCharTimeoutEnabled,
+			StreamFirstCharTimeout:        value.Provider.Build.StreamFirstCharTimeout.Value(),
 		},
 		ProviderWeb: settingsdomain.ProviderWebConfig{
 			BaseURL: value.Provider.Web.BaseURL, QuotaTimeout: value.Provider.Web.QuotaTimeout.Value(),
@@ -722,7 +725,8 @@ func toEditable(cfg config.Config) EditableConfig {
 			TokenAuth: cfg.Provider.Build.TokenAuth, UserAgent: cfg.Provider.Build.UserAgent,
 			ResponseHeaderTimeout: cfg.Provider.Build.ResponseHeaderTimeout.String(),
 			StreamIdleTimeout:     cfg.Provider.Build.StreamIdleTimeout.String(),
-			StreamFirstCharTimeout: cfg.Provider.Build.StreamFirstCharTimeout.String(),
+			StreamFirstCharTimeoutEnabled: cfg.Provider.Build.StreamFirstCharTimeoutEnabled,
+			StreamFirstCharTimeout:        cfg.Provider.Build.StreamFirstCharTimeout.String(),
 		},
 		ProviderWeb: ProviderWebConfig{
 			BaseURL: cfg.Provider.Web.BaseURL, QuotaTimeout: cfg.Provider.Web.QuotaTimeout.String(),
