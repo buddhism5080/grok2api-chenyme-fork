@@ -158,7 +158,7 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 		return nil, err
 	}
 	if request.Streaming && idleCancel != nil && response.StatusCode >= 200 && response.StatusCode < 300 && response.Body != nil {
-		response.Body = providerstreamidle.New(response.Body, time.Duration(cfg.StreamIdleTimeoutSeconds)*time.Second, idleCancel)
+		response.Body = providerstreamidle.New(response.Body, 0, time.Duration(cfg.StreamIdleTimeoutSeconds)*time.Second, idleCancel)
 	}
 	responseBodyTruncated := false
 	var rateLimit *provider.RateLimitMetadata

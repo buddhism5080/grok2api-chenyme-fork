@@ -31,6 +31,17 @@ func TestTransportUpstreamFailureClassifiesProviderStreamIdleTimeout(t *testing.
 	}
 }
 
+func TestTransportUpstreamFailureClassifiesFirstCharTimeout(t *testing.T) {
+	failure := newTransportUpstreamFailure(neterror.ErrUpstreamFirstCharTimeout, 42, "build")
+	if failure.HTTPStatus != http.StatusGatewayTimeout || failure.Code != "upstream_first_char_timeout" || failure.PublicMessage != "等待上游首字超时" || failure.AccountScoped {
+		t.Fatalf("failure = %#v", failure)
+	}
+	// First-char timeout is retryable for Build (unlike response-header timeout).
+	if !isRetryableTransportFailure(accountdomain.ProviderBuild, neterror.ErrUpstreamFirstCharTimeout) {
+		t.Fatal("Build first-char timeout must allow cross-account retry")
+	}
+}
+
 func TestTransportUpstreamFailureClassifiesResponseHeaderTimeout(t *testing.T) {
 	failure := newTransportUpstreamFailure(responseHeaderTimeoutTestError{}, 42, "build")
 	if failure.HTTPStatus != http.StatusGatewayTimeout || failure.Code != "upstream_header_timeout" || failure.PublicMessage != "等待上游响应头超时" || failure.AuditCode() != "upstream_header_timeout" {
