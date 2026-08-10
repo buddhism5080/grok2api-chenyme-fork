@@ -583,6 +583,7 @@ func mergeEditable(current config.Config, input EditableConfig) (config.Config, 
 		next.Provider.Build.TokenAuth = tokenAuth
 	}
 	next.Provider.Build.UserAgent = strings.TrimSpace(input.ProviderBuild.UserAgent)
+	next.Provider.Build.StreamFirstCharTimeoutEnabled = input.ProviderBuild.StreamFirstCharTimeoutEnabled
 	next.Provider.Web.BaseURL = strings.TrimSpace(input.ProviderWeb.BaseURL)
 	next.Provider.Web.StatsigMode = strings.TrimSpace(input.ProviderWeb.StatsigMode)
 	next.Provider.Web.StatsigSignerURL = strings.TrimSpace(input.ProviderWeb.StatsigSignerURL)
