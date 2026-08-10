@@ -13,9 +13,11 @@ const (
 
 	// Stream first-character (TTFT) timeout for Build streaming requests.
 	// Measured from response headers received until the first body byte/token.
-	DefaultBuildStreamFirstCharTimeout = 15 * time.Second
-	MinBuildStreamFirstCharTimeout     = 5 * time.Second
-	MaxBuildStreamFirstCharTimeout     = 60 * time.Second
+	// Disabled by default; when enabled the timeout must be within [Min, Max].
+	DefaultBuildStreamFirstCharTimeoutEnabled = false
+	DefaultBuildStreamFirstCharTimeout        = 15 * time.Second
+	MinBuildStreamFirstCharTimeout            = 5 * time.Second
+	MaxBuildStreamFirstCharTimeout            = 60 * time.Second
 
 	DefaultWebStreamIdleTimeout     = 90 * time.Second
 	DefaultConsoleStreamIdleTimeout = 2 * time.Minute
@@ -100,7 +102,10 @@ type ProviderBuildConfig struct {
 	UserAgent             string
 	ResponseHeaderTimeout time.Duration
 	StreamIdleTimeout     time.Duration
+	// StreamFirstCharTimeoutEnabled gates the first-char timeout; default false.
+	StreamFirstCharTimeoutEnabled bool
 	// StreamFirstCharTimeout is the timeout from response headers to first body byte/token.
+	// Only enforced when StreamFirstCharTimeoutEnabled is true.
 	StreamFirstCharTimeout time.Duration
 }
 

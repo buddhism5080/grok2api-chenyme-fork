@@ -29,6 +29,7 @@ import (
 	updatecheckapp "github.com/chenyme/grok2api/backend/internal/application/updatecheck"
 	"github.com/chenyme/grok2api/backend/internal/buildinfo"
 	"github.com/chenyme/grok2api/backend/internal/domain/account"
+	settingsdomain "github.com/chenyme/grok2api/backend/internal/domain/settings"
 	"github.com/chenyme/grok2api/backend/internal/infra/config"
 	infraegress "github.com/chenyme/grok2api/backend/internal/infra/egress"
 	inframedia "github.com/chenyme/grok2api/backend/internal/infra/media"
@@ -207,7 +208,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 	egressManager.UpdateClearanceConfig(clearanceConfig(cfg))
 	egressManager.UpdateBuildResponseHeaderTimeout(cfg.Provider.Build.ResponseHeaderTimeout.Value())
 	egressManager.UpdateBuildStreamIdleTimeout(cfg.Provider.Build.StreamIdleTimeout.Value())
-	egressManager.UpdateBuildStreamFirstCharTimeout(cfg.Provider.Build.StreamFirstCharTimeout.Value())
+	egressManager.UpdateBuildStreamFirstCharTimeout(effectiveBuildStreamFirstCharTimeout(cfg.Provider.Build))
 	cliAdapter := cliprovider.NewAdapter(cliprovider.Config{
 		BaseURL: cfg.Provider.Build.BaseURL, FallbackBaseURL: config.NormalizeBuildFallbackBaseURL(cfg.Provider.Build.FallbackBaseURL),
 		ClientVersion: cfg.Provider.Build.ClientVersion, ClientIdentifier: cfg.Provider.Build.ClientIdentifier,
@@ -396,7 +397,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 		})
 		egressManager.UpdateBuildResponseHeaderTimeout(next.Provider.Build.ResponseHeaderTimeout.Value())
 		egressManager.UpdateBuildStreamIdleTimeout(next.Provider.Build.StreamIdleTimeout.Value())
-		egressManager.UpdateBuildStreamFirstCharTimeout(next.Provider.Build.StreamFirstCharTimeout.Value())
+		egressManager.UpdateBuildStreamFirstCharTimeout(effectiveBuildStreamFirstCharTimeout(next.Provider.Build))
 		webAdapter.UpdateConfig(webProviderConfig(next))
 		egressManager.UpdateClearanceConfig(clearanceConfig(next))
 		consoleAdapter.UpdateConfig(consoleProviderConfig(next))
@@ -455,6 +456,19 @@ func invalidationSourceInstance(cfg config.Config) string {
 
 func maxBatchConcurrency(value config.BatchConfig) int {
 	return max(value.ImportConcurrency, value.ConversionConcurrency, value.SyncConcurrency, value.RefreshConcurrency)
+}
+
+// effectiveBuildStreamFirstCharTimeout returns the live first-char deadline.
+// Zero disables the timer (default).
+func effectiveBuildStreamFirstCharTimeout(build config.BuildProviderConfig) time.Duration {
+	if !build.StreamFirstCharTimeoutEnabled {
+		return 0
+	}
+	value := build.StreamFirstCharTimeout.Value()
+	if value <= 0 {
+		return settingsdomain.DefaultBuildStreamFirstCharTimeout
+	}
+	return value
 }
 
 func webProviderConfig(cfg config.Config) webprovider.Config {
