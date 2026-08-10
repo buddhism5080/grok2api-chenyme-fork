@@ -236,6 +236,7 @@ type Service struct {
 	modelSyncing                map[uint64]struct{}
 	markBuildChatDeniedAsReauth atomic.Bool
 	qualityRetry                atomic.Pointer[QualityRetryRuntime]
+	buildStreamFirstCharTimeout atomic.Int64
 	buildHighTokenSpeedMu       sync.RWMutex
 	buildHighTokenSpeedPolicy   buildHighTokenSpeedPolicy
 }
@@ -538,6 +539,19 @@ func (s *Service) UpdateRequestTimeout(value time.Duration) {
 		value = minimumTextBillingReservationTTL
 	}
 	s.requestTimeout.Store(int64(value))
+}
+
+// UpdateBuildStreamFirstCharTimeout hot-reloads the Build first-content-token
+// deadline. Zero disables the application-level timer (default).
+func (s *Service) UpdateBuildStreamFirstCharTimeout(value time.Duration) {
+	if value < 0 {
+		value = 0
+	}
+	s.buildStreamFirstCharTimeout.Store(int64(value))
+}
+
+func (s *Service) buildStreamFirstCharDeadline() time.Duration {
+	return time.Duration(s.buildStreamFirstCharTimeout.Load())
 }
 
 func (s *Service) textBillingReservationTTL() time.Duration {
@@ -1229,6 +1243,19 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 		var markFirstToken func()
 		if firstToken != nil {
 			markFirstToken = firstToken.mark
+		}
+		if input.Streaming && credential.Provider == accountdomain.ProviderBuild {
+			if deadline := s.buildStreamFirstCharDeadline(); deadline > 0 {
+				deadlineBody, noteFirstToken := armFirstTokenDeadline(response.Body, deadline)
+				response.Body = deadlineBody
+				prevMark := markFirstToken
+				markFirstToken = func() {
+					noteFirstToken()
+					if prevMark != nil {
+						prevMark()
+					}
+				}
+			}
 		}
 		timingHandedOff = true
 		return &Result{StatusCode: response.StatusCode, Status: response.Status, Header: response.Header, Body: &finalizingBody{ReadCloser: response.Body, finalize: func() { finalize(Usage{}, "", "stream_closed") }}, MarkFirstToken: markFirstToken, RecordStreamFailure: recordStreamFailure, Finalize: finalize}
