@@ -155,6 +155,7 @@ type Manager struct {
 	clientGeneration       uint64
 	buildHeaderTimeout     atomic.Int64
 	buildStreamIdleTimeout atomic.Int64
+	buildStreamFirstCharTimeout atomic.Int64
 	accountIsolated        atomic.Bool
 	operationsConfig       cachedOperationsConfig
 	operationsConfigLoad   singleflight.Group
@@ -242,6 +243,7 @@ func NewManager(repository repository.EgressRepository, cipher *security.Cipher)
 	}
 	manager.buildHeaderTimeout.Store(int64(settingsdomain.DefaultBuildResponseHeaderTimeout))
 	manager.buildStreamIdleTimeout.Store(int64(settingsdomain.DefaultBuildStreamIdleTimeout))
+	manager.buildStreamFirstCharTimeout.Store(int64(settingsdomain.DefaultBuildStreamFirstCharTimeout))
 	return manager
 }
 
@@ -366,6 +368,20 @@ func (m *Manager) UpdateBuildStreamIdleTimeout(value time.Duration) {
 		value = settingsdomain.DefaultBuildStreamIdleTimeout
 	}
 	m.buildStreamIdleTimeout.Store(int64(value))
+}
+
+// UpdateBuildStreamFirstCharTimeout updates the first-char timeout for subsequent Build streams.
+// Active response bodies retain their existing wrapper (the new timeout only affects new streams).
+func (m *Manager) UpdateBuildStreamFirstCharTimeout(value time.Duration) {
+	if value <= 0 {
+		value = settingsdomain.DefaultBuildStreamFirstCharTimeout
+	}
+	m.buildStreamFirstCharTimeout.Store(int64(value))
+}
+
+// BuildStreamFirstCharTimeout returns the configured first-char deadline for Grok Build streams.
+func (m *Manager) BuildStreamFirstCharTimeout() time.Duration {
+	return time.Duration(m.buildStreamFirstCharTimeout.Load())
 }
 
 // BuildStreamIdleTimeout returns the configured stream idle deadline for Grok
@@ -1678,7 +1694,7 @@ func (m *Manager) FeedbackForScope(ctx context.Context, scope domain.Scope, node
 	if scope == domain.ScopeConsoleAsset && transportErr == nil && status == http.StatusForbidden {
 		return
 	}
-	if neterrorpkg.IsUpstreamStreamIdleTimeout(transportErr) {
+	if neterrorpkg.IsUpstreamStreamIdleTimeout(transportErr) || neterrorpkg.IsUpstreamFirstCharTimeout(transportErr) {
 		return
 	}
 	if scope == domain.ScopeBuild && neterrorpkg.IsResponseHeaderTimeout(transportErr) {

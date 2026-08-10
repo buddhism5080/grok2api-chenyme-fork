@@ -109,7 +109,8 @@ func (t *egressTransport) wrapStreamIdleBody(body io.ReadCloser, ctx context.Con
 	if idle <= 0 || cancel == nil {
 		return body
 	}
-	return newIdleTimeoutReadCloser(body, idle, cancel)
+	firstChar := t.manager.BuildStreamFirstCharTimeout()
+	return newIdleTimeoutReadCloser(body, firstChar, idle, cancel)
 }
 
 func shouldReportEgressFailure(ctx context.Context, err error) bool {
