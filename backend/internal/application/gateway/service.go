@@ -1267,19 +1267,9 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 		if firstToken != nil {
 			markFirstToken = firstToken.mark
 		}
-		if input.Streaming && credential.Provider == accountdomain.ProviderBuild {
-			if deadline := s.buildStreamFirstCharDeadline(); deadline > 0 {
-				deadlineBody, noteFirstToken := armFirstTokenDeadline(response.Body, deadline)
-				response.Body = deadlineBody
-				prevMark := markFirstToken
-				markFirstToken = func() {
-					noteFirstToken()
-					if prevMark != nil {
-						prevMark()
-					}
-				}
-			}
-		}
+		// First-token deadline is enforced earlier (pre-handoff) so timeout can
+		// rotate accounts. Post-handoff arming is removed: once headers are
+		// written to the client, cross-account retry is impossible.
 		timingHandedOff = true
 		return &Result{StatusCode: response.StatusCode, Status: response.Status, Header: response.Header, Body: &finalizingBody{ReadCloser: response.Body, finalize: func() { finalize(Usage{}, "", "stream_closed") }}, MarkFirstToken: markFirstToken, RecordStreamFailure: recordStreamFailure, Finalize: finalize}
 	}
@@ -1665,6 +1655,30 @@ attemptLoop:
 			continue
 		}
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			// Wait for first content token before marking success / handing off
+			// to the client. Timeout here can still rotate accounts because no
+			// client headers have been written yet.
+			if input.Streaming && credential.Provider == accountdomain.ProviderBuild {
+				if deadline := s.buildStreamFirstCharDeadline(); deadline > 0 {
+					waitStarted := time.Now()
+					prefix, rest, waitErr := awaitFirstContentToken(response.Body, deadline, firstTokenKindForOperation(operation))
+					if waitErr != nil {
+						_ = failureAttempts.captureResponse(credential, waitStarted, nil, waitErr)
+						lease.Release()
+						lastErr = waitErr
+						lastFailure = newTransportUpstreamFailure(waitErr, credential.ID, credential.Name)
+						// Do not MarkFailure / cool the account for first-char timeout.
+						if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
+							break
+						}
+						continue
+					}
+					response.Body = newPrefixThenRest(prefix, rest)
+					if firstToken != nil {
+						firstToken.mark()
+					}
+				}
+			}
 			s.selector.markSuccess(ctx, credential, lease.QuotaProbe)
 			if qualityHoldEnabled {
 				replay, verdict, peekUsage, _, peekErr := peekQualityStream(ctx, response.Body, qualityProtocolForOperation(operation), holdCfg)

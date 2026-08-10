@@ -367,6 +367,10 @@ func transportStage(err error) string {
 	switch {
 	case neterrorpkg.IsResponseHeaderTimeout(err):
 		return "response_header_timeout"
+	case neterrorpkg.IsUpstreamFirstCharTimeout(err):
+		return "upstream_first_char_timeout"
+	case neterrorpkg.IsUpstreamStreamIdleTimeout(err):
+		return "upstream_stream_idle_timeout"
 	case errors.Is(err, context.Canceled):
 		return "request_canceled"
 	case errors.Is(err, context.DeadlineExceeded):
