@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	accountdomain "github.com/chenyme/grok2api/backend/internal/domain/account"
+	"github.com/chenyme/grok2api/backend/internal/pkg/neterror"
 )
 
 func TestGenerationTimingLogsOnlyPhaseMetadata(t *testing.T) {
@@ -48,4 +50,56 @@ func TestFirstTokenTimerMarksOnce(t *testing.T) {
 	if second == nil || *second != *first {
 		t.Fatalf("timer changed after second mark: first=%v second=%v", first, second)
 	}
+}
+
+func TestFirstTokenDeadlineTimesOutWithoutMark(t *testing.T) {
+	stall := newStallReadCloser()
+	body, _ := armFirstTokenDeadline(stall, 30*time.Millisecond)
+	defer body.Close()
+	started := time.Now()
+	_, err := body.Read(make([]byte, 8))
+	if !errors.Is(err, neterror.ErrUpstreamFirstCharTimeout) {
+		t.Fatalf("Read() error = %v, want ErrUpstreamFirstCharTimeout", err)
+	}
+	if elapsed := time.Since(started); elapsed < 25*time.Millisecond || elapsed > time.Second {
+		t.Fatalf("timeout elapsed = %s", elapsed)
+	}
+}
+
+func TestFirstTokenDeadlineCancelledByMark(t *testing.T) {
+	body, note := armFirstTokenDeadline(io.NopCloser(strings.NewReader("hello")), 200*time.Millisecond)
+	note()
+	data, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "hello" {
+		t.Fatalf("data = %q", data)
+	}
+	time.Sleep(250 * time.Millisecond)
+	if body.timedOut.Load() {
+		t.Fatal("deadline still fired after first-token mark")
+	}
+}
+
+type stallReadCloser struct {
+	closed chan struct{}
+}
+
+func newStallReadCloser() *stallReadCloser {
+	return &stallReadCloser{closed: make(chan struct{})}
+}
+
+func (s *stallReadCloser) Read([]byte) (int, error) {
+	<-s.closed
+	return 0, io.EOF
+}
+
+func (s *stallReadCloser) Close() error {
+	select {
+	case <-s.closed:
+	default:
+		close(s.closed)
+	}
+	return nil
 }
