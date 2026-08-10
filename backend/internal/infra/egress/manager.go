@@ -243,7 +243,8 @@ func NewManager(repository repository.EgressRepository, cipher *security.Cipher)
 	}
 	manager.buildHeaderTimeout.Store(int64(settingsdomain.DefaultBuildResponseHeaderTimeout))
 	manager.buildStreamIdleTimeout.Store(int64(settingsdomain.DefaultBuildStreamIdleTimeout))
-	manager.buildStreamFirstCharTimeout.Store(int64(settingsdomain.DefaultBuildStreamFirstCharTimeout))
+	// First-char timeout is off by default (0 = disabled).
+	manager.buildStreamFirstCharTimeout.Store(0)
 	return manager
 }
 
@@ -371,15 +372,16 @@ func (m *Manager) UpdateBuildStreamIdleTimeout(value time.Duration) {
 }
 
 // UpdateBuildStreamFirstCharTimeout updates the first-char timeout for subsequent Build streams.
-// Active response bodies retain their existing wrapper (the new timeout only affects new streams).
+// Pass value <= 0 to disable. Active response bodies retain their existing wrapper.
 func (m *Manager) UpdateBuildStreamFirstCharTimeout(value time.Duration) {
-	if value <= 0 {
-		value = settingsdomain.DefaultBuildStreamFirstCharTimeout
+	if value < 0 {
+		value = 0
 	}
 	m.buildStreamFirstCharTimeout.Store(int64(value))
 }
 
 // BuildStreamFirstCharTimeout returns the configured first-char deadline for Grok Build streams.
+// Zero means the first-char timeout is disabled.
 func (m *Manager) BuildStreamFirstCharTimeout() time.Duration {
 	return time.Duration(m.buildStreamFirstCharTimeout.Load())
 }
