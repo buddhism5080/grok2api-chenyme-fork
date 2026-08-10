@@ -585,7 +585,7 @@ func (a *Adapter) doResponseRequest(ctx context.Context, request provider.Respon
 		case resp.Body == nil:
 			responseIdleCancel(nil)
 		case isHTTPSuccess(resp.StatusCode):
-			resp.Body = providerstreamidle.New(resp.Body, responseIdle, responseIdleCancel)
+			resp.Body = providerstreamidle.New(resp.Body, 0, responseIdle, responseIdleCancel)
 		default:
 			resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: responseIdleCancel}
 		}

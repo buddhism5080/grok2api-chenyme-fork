@@ -11,6 +11,12 @@ const (
 	MinBuildStreamIdleTimeout     = 30 * time.Second
 	MaxBuildStreamIdleTimeout     = 10 * time.Minute
 
+	// Stream first-character (TTFT) timeout for Build streaming requests.
+	// Measured from response headers received until the first body byte/token.
+	DefaultBuildStreamFirstCharTimeout = 15 * time.Second
+	MinBuildStreamFirstCharTimeout     = 5 * time.Second
+	MaxBuildStreamFirstCharTimeout     = 60 * time.Second
+
 	DefaultWebStreamIdleTimeout     = 90 * time.Second
 	DefaultConsoleStreamIdleTimeout = 2 * time.Minute
 	MinProviderStreamIdleTimeout    = 30 * time.Second
@@ -94,6 +100,8 @@ type ProviderBuildConfig struct {
 	UserAgent             string
 	ResponseHeaderTimeout time.Duration
 	StreamIdleTimeout     time.Duration
+	// StreamFirstCharTimeout is the timeout from response headers to first body byte/token.
+	StreamFirstCharTimeout time.Duration
 }
 
 // RoutingConfig 定义会话粘性、冷却和故障切换边界。

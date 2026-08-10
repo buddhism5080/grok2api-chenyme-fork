@@ -158,6 +158,7 @@ type BuildProviderConfig struct {
 	UserAgent             string   `yaml:"userAgent"`
 	ResponseHeaderTimeout Duration `yaml:"-"`
 	StreamIdleTimeout     Duration `yaml:"-"`
+	StreamFirstCharTimeout Duration `yaml:"-"`
 }
 
 // DefaultBuildFallbackBaseURL 是主 Build API 对可回退推理操作 403 时探测的 XAI API 根地址。
@@ -612,6 +613,9 @@ func (c Config) Validate() error {
 	if idle := c.Provider.Build.StreamIdleTimeout.Value(); idle < settingsdomain.MinBuildStreamIdleTimeout || idle > settingsdomain.MaxBuildStreamIdleTimeout {
 		return errors.New("Grok Build 流式空闲超时必须在 30 秒到 10 分钟之间")
 	}
+	if first := c.Provider.Build.StreamFirstCharTimeout.Value(); first < settingsdomain.MinBuildStreamFirstCharTimeout || first > settingsdomain.MaxBuildStreamFirstCharTimeout {
+		return errors.New("Grok Build 流式首字延迟超时必须在 5 秒到 60 秒之间")
+	}
 	webURL, err := url.ParseRequestURI(strings.TrimSpace(c.Provider.Web.BaseURL))
 	if err != nil || webURL.Scheme != "https" || webURL.Host == "" || webURL.User != nil {
 		return errors.New("provider.web.baseURL 必须是无凭据的 HTTPS URL")
@@ -913,6 +917,7 @@ func defaultConfig() Config {
 				ClientVersion: RecommendedBuildClientVersion, ClientIdentifier: "grok-shell", TokenAuth: "xai-grok-cli",
 				UserAgent: RecommendedBuildUserAgent, ResponseHeaderTimeout: Duration(settingsdomain.DefaultBuildResponseHeaderTimeout),
 				StreamIdleTimeout: Duration(settingsdomain.DefaultBuildStreamIdleTimeout),
+				StreamFirstCharTimeout: Duration(settingsdomain.DefaultBuildStreamFirstCharTimeout),
 			},
 			Web: WebProviderConfig{
 				BaseURL: "https://grok.com", StatsigMode: StatsigModeURL, StatsigSignerURL: DefaultStatsigSignerURL,

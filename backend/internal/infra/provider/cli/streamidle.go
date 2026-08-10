@@ -31,8 +31,8 @@ func idleCancelFrom(ctx context.Context) (time.Duration, context.CancelCauseFunc
 
 type idleTimeoutReadCloser = providerstreamidle.ReadCloser
 
-func newIdleTimeoutReadCloser(body io.ReadCloser, idle time.Duration, cancel context.CancelCauseFunc) *idleTimeoutReadCloser {
-	return providerstreamidle.New(body, idle, cancel)
+func newIdleTimeoutReadCloser(body io.ReadCloser, firstChar, idle time.Duration, cancel context.CancelCauseFunc) *idleTimeoutReadCloser {
+	return providerstreamidle.New(body, firstChar, idle, cancel)
 }
 
 // cancelOnCloseReadCloser keeps a derived HTTP request context alive while a

@@ -1809,7 +1809,7 @@ func isUpstreamStreamFailure(errorCode string) bool {
 }
 
 func streamFailureHealthPenalty(errorCode string, usage Usage, idleCooldown time.Duration) (int, time.Duration) {
-	if (errorCode == "upstream_stream_idle_timeout" || errorCode == "upstream_response_empty") && !usage.OutputObserved && usage.OutputTokens == 0 && usage.ReasoningTokens == 0 {
+	if (errorCode == "upstream_stream_idle_timeout" || errorCode == "upstream_response_empty" || errorCode == "upstream_first_char_timeout") && !usage.OutputObserved && usage.OutputTokens == 0 && usage.ReasoningTokens == 0 {
 		if idleCooldown <= 0 {
 			idleCooldown = qualityIdleAccountCooldown
 		}
@@ -1836,6 +1836,9 @@ func upstreamResponseErrorHealthPenalty(err error, idleCooldown time.Duration) (
 			return 0, 0, true
 		}
 		status, cooldown := streamFailureHealthPenalty("upstream_stream_idle_timeout", Usage{}, idleCooldown)
+		return status, cooldown, true
+	case neterrorpkg.IsUpstreamFirstCharTimeout(err):
+		status, cooldown := streamFailureHealthPenalty("upstream_first_char_timeout", Usage{}, idleCooldown)
 		return status, cooldown, true
 	default:
 		return 0, 0, false
@@ -2202,7 +2205,7 @@ func shouldStopForNonAccountFingerprint(fingerprints map[string]int, failure *Up
 	}
 	fingerprints[failure.Fingerprint]++
 	limit := nonAccountFailureFingerprintLimit
-	if failure.Code == "upstream_stream_idle_timeout" || failure.Fingerprint == "upstream_stream_idle_timeout" || failure.Code == "upstream_stream_empty" || failure.Fingerprint == "upstream_stream_empty" {
+	if failure.Code == "upstream_stream_idle_timeout" || failure.Fingerprint == "upstream_stream_idle_timeout" || failure.Code == "upstream_stream_empty" || failure.Fingerprint == "upstream_stream_empty" || failure.Code == "upstream_first_char_timeout" || failure.Fingerprint == "upstream_first_char_timeout" {
 		limit = streamIdleFailureFingerprintLimit
 	}
 	return fingerprints[failure.Fingerprint] >= limit

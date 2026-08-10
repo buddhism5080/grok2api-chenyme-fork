@@ -19,6 +19,11 @@ var ErrUpstreamStreamIdleTimeout = errors.New("upstream stream idle timeout")
 // policy without penalizing ordinary request aborts.
 var ErrUpstreamResponseEmpty = errors.New("upstream response body is empty")
 
+// ErrUpstreamFirstCharTimeout is attached to a request context when a
+// Build streaming response is aborted because the first data byte/token did
+// not arrive within the configured window.
+var ErrUpstreamFirstCharTimeout = errors.New("upstream stream first char timeout")
+
 // ErrBuildStreamIdleTimeout is retained as a compatibility alias for callers
 // introduced before stream-idle protection became provider-neutral.
 var ErrBuildStreamIdleTimeout = ErrUpstreamStreamIdleTimeout
@@ -69,4 +74,10 @@ func (e *IdleTimeoutError) Unwrap() error { return ErrUpstreamStreamIdleTimeout 
 func IdleTimeoutObservedData(err error) bool {
 	var idle *IdleTimeoutError
 	return errors.As(err, &idle) && idle.DataObserved
+}
+
+// IsUpstreamFirstCharTimeout reports whether err is (or wraps) the first-char
+// timeout sentinel.
+func IsUpstreamFirstCharTimeout(err error) bool {
+	return errors.Is(err, ErrUpstreamFirstCharTimeout)
 }

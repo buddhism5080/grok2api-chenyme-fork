@@ -65,6 +65,7 @@ type providerBuildConfigDTO struct {
 	UserAgent             string `json:"userAgent"`
 	ResponseHeaderTimeout string `json:"responseHeaderTimeout"`
 	StreamIdleTimeout     string `json:"streamIdleTimeout"`
+	StreamFirstCharTimeout string `json:"streamFirstCharTimeout"`
 }
 
 type providerWebConfigDTO struct {
@@ -197,6 +198,7 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 			TokenAuth: value.ProviderBuild.TokenAuth, UserAgent: value.ProviderBuild.UserAgent,
 			ResponseHeaderTimeout: value.ProviderBuild.ResponseHeaderTimeout,
 			StreamIdleTimeout:     value.ProviderBuild.StreamIdleTimeout,
+			StreamFirstCharTimeout: value.ProviderBuild.StreamFirstCharTimeout,
 		},
 		ProviderWeb: settingsapp.ProviderWebConfig{
 			BaseURL: value.ProviderWeb.BaseURL, QuotaTimeout: value.ProviderWeb.QuotaTimeout,
@@ -289,6 +291,7 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 				TokenAuthConfigured: strings.TrimSpace(config.ProviderBuild.TokenAuth) != "", UserAgent: config.ProviderBuild.UserAgent,
 				ResponseHeaderTimeout: config.ProviderBuild.ResponseHeaderTimeout,
 				StreamIdleTimeout:     config.ProviderBuild.StreamIdleTimeout,
+				StreamFirstCharTimeout: config.ProviderBuild.StreamFirstCharTimeout,
 			},
 			ProviderWeb: providerWebConfigDTO{
 				BaseURL: config.ProviderWeb.BaseURL, QuotaTimeout: config.ProviderWeb.QuotaTimeout,
