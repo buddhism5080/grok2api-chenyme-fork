@@ -8,6 +8,7 @@ import (
 	"time"
 
 	accountdomain "github.com/chenyme/grok2api/backend/internal/domain/account"
+	"github.com/chenyme/grok2api/backend/internal/pkg/neterror"
 	"github.com/chenyme/grok2api/backend/internal/pkg/perfmetrics"
 )
 
@@ -140,4 +141,57 @@ func (r *firstByteReadCloser) Read(buffer []byte) (int, error) {
 		r.once.Do(r.mark)
 	}
 	return n, err
+}
+
+// firstTokenDeadlineBody closes the upstream stream if no application-level
+// first content token is marked within deadline after response handoff.
+// This matches audit 首字 (TTFT for generated deltas), not raw HTTP body bytes:
+// Build SSE often emits response.created / metadata quickly while the real
+// first token arrives much later.
+type firstTokenDeadlineBody struct {
+	io.ReadCloser
+	timer    *time.Timer
+	stopOnce sync.Once
+	timedOut atomic.Bool
+}
+
+func armFirstTokenDeadline(body io.ReadCloser, deadline time.Duration) (*firstTokenDeadlineBody, func()) {
+	wrapper := &firstTokenDeadlineBody{ReadCloser: body}
+	if deadline <= 0 {
+		return wrapper, func() {}
+	}
+	wrapper.timer = time.AfterFunc(deadline, func() {
+		if wrapper.timedOut.CompareAndSwap(false, true) {
+			_ = wrapper.ReadCloser.Close()
+		}
+	})
+	return wrapper, wrapper.noteFirstToken
+}
+
+func (b *firstTokenDeadlineBody) noteFirstToken() {
+	if b == nil {
+		return
+	}
+	b.stopOnce.Do(func() {
+		if b.timer != nil {
+			b.timer.Stop()
+			b.timer = nil
+		}
+	})
+}
+
+func (b *firstTokenDeadlineBody) Read(buffer []byte) (int, error) {
+	n, err := b.ReadCloser.Read(buffer)
+	if b.timedOut.Load() {
+		if n > 0 {
+			return n, nil
+		}
+		return 0, neterror.ErrUpstreamFirstCharTimeout
+	}
+	return n, err
+}
+
+func (b *firstTokenDeadlineBody) Close() error {
+	b.noteFirstToken()
+	return b.ReadCloser.Close()
 }
