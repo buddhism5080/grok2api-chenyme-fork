@@ -132,7 +132,7 @@ func (a *Adapter) openGatewayChat(ctx context.Context, credential account.Creden
 	request, _ := http.NewRequestWithContext(requestCtx, http.MethodGet, endpoint, nil)
 	body := io.ReadCloser(&cancelBody{ReadCloser: reader, cancel: cancel})
 	if idleCancel != nil {
-		body = providerstreamidle.New(body, time.Duration(cfg.StreamIdleTimeoutSeconds)*time.Second, idleCancel)
+		body = providerstreamidle.New(body, 0, time.Duration(cfg.StreamIdleTimeoutSeconds)*time.Second, idleCancel)
 	}
 	return &http.Response{
 		StatusCode: http.StatusOK,

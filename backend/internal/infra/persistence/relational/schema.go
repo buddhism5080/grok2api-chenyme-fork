@@ -290,6 +290,10 @@ func (d *Database) migrateProviderStreamIdleTimeouts(ctx context.Context) error 
 			payload.Config.ProviderBuild.StreamIdleTimeout = settingsdomain.DefaultBuildStreamIdleTimeout
 			changed = true
 		}
+		if payload.Config.ProviderBuild.StreamFirstCharTimeout <= 0 {
+			payload.Config.ProviderBuild.StreamFirstCharTimeout = settingsdomain.DefaultBuildStreamFirstCharTimeout
+			changed = true
+		}
 		if payload.Config.ProviderWeb.StreamIdleTimeout <= 0 {
 			payload.Config.ProviderWeb.StreamIdleTimeout = settingsdomain.DefaultWebStreamIdleTimeout
 			changed = true

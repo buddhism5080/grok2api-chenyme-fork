@@ -13,6 +13,11 @@ const responseHeaderTimeoutMarker = "timeout awaiting response headers"
 // configured idle window.
 var ErrUpstreamStreamIdleTimeout = errors.New("upstream stream idle timeout")
 
+// ErrUpstreamFirstCharTimeout is attached to a request context when a
+// Build streaming response is aborted because the first data byte/token did
+// not arrive within the configured window.
+var ErrUpstreamFirstCharTimeout = errors.New("upstream stream first char timeout")
+
 // ErrBuildStreamIdleTimeout is retained as a compatibility alias for callers
 // introduced before stream-idle protection became provider-neutral.
 var ErrBuildStreamIdleTimeout = ErrUpstreamStreamIdleTimeout
@@ -40,4 +45,10 @@ func IsBuildStreamIdleTimeout(err error) bool {
 // provider stream-idle timeout sentinel.
 func IsUpstreamStreamIdleTimeout(err error) bool {
 	return errors.Is(err, ErrUpstreamStreamIdleTimeout)
+}
+
+// IsUpstreamFirstCharTimeout reports whether err is (or wraps) the first-char
+// timeout sentinel.
+func IsUpstreamFirstCharTimeout(err error) bool {
+	return errors.Is(err, ErrUpstreamFirstCharTimeout)
 }
