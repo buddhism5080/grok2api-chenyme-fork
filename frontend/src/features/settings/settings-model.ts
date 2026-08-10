@@ -94,6 +94,7 @@ export const settingsSchema = z.object({
     userAgent: z.string().trim().min(1),
     responseHeaderTimeout: buildResponseHeaderDuration,
     streamIdleTimeout: buildStreamIdleDuration,
+    streamFirstCharTimeoutEnabled: z.boolean(),
     streamFirstCharTimeout: buildStreamFirstCharDuration,
   }),
   providerWeb: z.object({
@@ -209,7 +210,7 @@ export type SettingsForm = z.infer<typeof settingsSchema>;
 export function toSettingsForm(config: SettingsConfigDTO): SettingsForm {
   return {
     server: config.server,
-    providerBuild: { ...config.providerBuild, responseHeaderTimeout: parseDuration(config.providerBuild.responseHeaderTimeout), streamIdleTimeout: parseDuration(config.providerBuild.streamIdleTimeout), streamFirstCharTimeout: parseDuration(config.providerBuild.streamFirstCharTimeout || "15s") },
+    providerBuild: { ...config.providerBuild, responseHeaderTimeout: parseDuration(config.providerBuild.responseHeaderTimeout), streamIdleTimeout: parseDuration(config.providerBuild.streamIdleTimeout), streamFirstCharTimeoutEnabled: Boolean(config.providerBuild.streamFirstCharTimeoutEnabled), streamFirstCharTimeout: parseDuration(config.providerBuild.streamFirstCharTimeout || "15s") },
     providerWeb: {
       ...config.providerWeb,
       statsigManualValue: "",
@@ -257,7 +258,7 @@ export function toSettingsForm(config: SettingsConfigDTO): SettingsForm {
 export function toSettingsDTO(config: SettingsForm): SettingsConfigDTO {
   return {
     server: config.server,
-    providerBuild: { ...config.providerBuild, responseHeaderTimeout: formatDuration(config.providerBuild.responseHeaderTimeout), streamIdleTimeout: formatDuration(config.providerBuild.streamIdleTimeout), streamFirstCharTimeout: formatDuration(config.providerBuild.streamFirstCharTimeout) },
+    providerBuild: { ...config.providerBuild, responseHeaderTimeout: formatDuration(config.providerBuild.responseHeaderTimeout), streamIdleTimeout: formatDuration(config.providerBuild.streamIdleTimeout), streamFirstCharTimeoutEnabled: Boolean(config.providerBuild.streamFirstCharTimeoutEnabled), streamFirstCharTimeout: formatDuration(config.providerBuild.streamFirstCharTimeout) },
     providerWeb: {
       ...config.providerWeb,
       quotaTimeout: formatDuration(config.providerWeb.quotaTimeout), chatTimeout: formatDuration(config.providerWeb.chatTimeout), streamIdleTimeout: formatDuration(config.providerWeb.streamIdleTimeout),
