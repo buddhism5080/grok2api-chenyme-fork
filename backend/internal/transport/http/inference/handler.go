@@ -1252,6 +1252,8 @@ func (h *Handler) writeProtocolResult(c *gin.Context, result *gateway.Result, st
 			errorCode = "upstream_stream_incomplete"
 		case errors.Is(err, neterror.ErrUpstreamStreamIdleTimeout):
 			errorCode = "upstream_stream_idle_timeout"
+		case errors.Is(err, neterror.ErrUpstreamFirstCharTimeout):
+			errorCode = "upstream_first_char_timeout"
 		case errors.Is(err, errUpstreamStreamRead):
 			errorCode = "upstream_stream_interrupted"
 		default:

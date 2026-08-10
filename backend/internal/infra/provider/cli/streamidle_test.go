@@ -56,7 +56,7 @@ func TestIdleTimeoutReadCloserNormalRead(t *testing.T) {
 	body := &staticReader{data: []byte("hello"), err: io.EOF}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	wrapper := newIdleTimeoutReadCloser(body, time.Hour, cancel)
+	wrapper := newIdleTimeoutReadCloser(body, 0, time.Hour, cancel)
 
 	buffer := make([]byte, 32)
 	n, err := wrapper.Read(buffer)
@@ -84,7 +84,7 @@ func TestIdleTimeoutReadCloserIdleAbort(t *testing.T) {
 	body := &blockingReader{release: release, err: context.Canceled}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	wrapper := newIdleTimeoutReadCloser(body, 20*time.Millisecond, cancel)
+	wrapper := newIdleTimeoutReadCloser(body, 0, 20*time.Millisecond, cancel)
 
 	// Wait for the idle timer to fire and cancel the context.
 	select {
@@ -119,7 +119,7 @@ func TestIdleTimeoutReadCloserResetOnData(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 	// Idle is shorter than the total read time but longer than each gap.
-	wrapper := newIdleTimeoutReadCloser(body, 60*time.Millisecond, cancel)
+	wrapper := newIdleTimeoutReadCloser(body, 0, 60*time.Millisecond, cancel)
 
 	for _, expected := range []string{"chunk-1", "chunk-2", "chunk-3"} {
 		buffer := make([]byte, 32)
@@ -149,7 +149,7 @@ func TestIdleTimeoutReadCloserClose(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 	idle := 20 * time.Millisecond
-	wrapper := newIdleTimeoutReadCloser(body, idle, cancel)
+	wrapper := newIdleTimeoutReadCloser(body, 0, idle, cancel)
 
 	if err := wrapper.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -214,7 +214,10 @@ func TestEgressTransportIdleTimeoutCancelsHTTP2BodyRead(t *testing.T) {
 	defer server.Close()
 
 	manager := infraegress.NewManager(emptyEgressRepository{}, nil)
-	manager.UpdateBuildStreamIdleTimeout(30 * time.Millisecond)
+	// Headers succeed but the body never produces the first byte: this is the
+	// first-char timeout window. Idle only arms after the first body byte.
+	manager.UpdateBuildStreamFirstCharTimeout(30 * time.Millisecond)
+	manager.UpdateBuildStreamIdleTimeout(2 * time.Second)
 	transport := &egressTransport{manager: manager, fallback: server.Client().Transport}
 	request, err := http.NewRequest(http.MethodPost, server.URL+"/responses", strings.NewReader(`{}`))
 	if err != nil {
@@ -235,11 +238,11 @@ func TestEgressTransportIdleTimeoutCancelsHTTP2BodyRead(t *testing.T) {
 
 	select {
 	case readErr := <-readDone:
-		if !errors.Is(readErr, neterror.ErrBuildStreamIdleTimeout) {
-			t.Fatalf("body read error = %v, want ErrBuildStreamIdleTimeout", readErr)
+		if !errors.Is(readErr, neterror.ErrUpstreamFirstCharTimeout) {
+			t.Fatalf("body read error = %v, want ErrUpstreamFirstCharTimeout", readErr)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("idle timeout did not unblock the HTTP/2 body read")
+		t.Fatal("first-char timeout did not unblock the HTTP/2 body read")
 	}
 	select {
 	case <-requestCanceled:

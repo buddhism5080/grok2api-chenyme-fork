@@ -1127,7 +1127,7 @@ attemptLoop:
 			if !isRetryableTransportFailure(credential.Provider, err) {
 				break
 			}
-			if !neterrorpkg.IsUpstreamStreamIdleTimeout(err) {
+			if !neterrorpkg.IsUpstreamStreamIdleTimeout(err) && !neterrorpkg.IsUpstreamFirstCharTimeout(err) {
 				s.selector.MarkFailure(ctx, credential, 0, 0)
 			}
 			if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
@@ -1907,7 +1907,8 @@ func shouldStopForNonAccountFingerprint(fingerprints map[string]int, failure *Up
 	}
 	fingerprints[failure.Fingerprint]++
 	limit := nonAccountFailureFingerprintLimit
-	if failure.Code == "upstream_stream_idle_timeout" || failure.Fingerprint == "upstream_stream_idle_timeout" {
+	if failure.Code == "upstream_stream_idle_timeout" || failure.Fingerprint == "upstream_stream_idle_timeout" ||
+		failure.Code == "upstream_first_char_timeout" || failure.Fingerprint == "upstream_first_char_timeout" {
 		limit = streamIdleFailureFingerprintLimit
 	}
 	return fingerprints[failure.Fingerprint] >= limit
