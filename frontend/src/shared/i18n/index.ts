@@ -1039,7 +1039,7 @@ const resources = {
         },
         units: { seconds: "秒", minutes: "分", hours: "时", days: "天" },
       },
-      settingsBuildTransport: { responseHeaderTimeout: "响应头超时", responseHeaderTimeoutHelp: "请求体发送完成后，等待 Grok Build 返回首个响应头的最长时间。", streamFirstCharTimeout: "流式首字延迟超时", streamFirstCharTimeoutHelp: "流式请求中，从收到响应头到首个字符/token 到达的最长时间（5–60 秒）。超时后视为失败并按重试机制处理，审计会记录首字时间。", streamIdleTimeout: "流式空闲超时", streamIdleTimeoutHelp: "流式响应中连续无有效生成内容或工具进度的最长等待时间；心跳与内部控制事件不会延长等待，超时后主动中断。" },
+      settingsBuildTransport: { responseHeaderTimeout: "响应头超时", responseHeaderTimeoutHelp: "请求体发送完成后，等待 Grok Build 返回首个响应头的最长时间。", streamFirstCharTimeout: "流式首字延迟超时", streamFirstCharTimeoutHelp: "流式请求中，从收到响应头到首个字符/token 到达的最长时间（5–60 秒）。超时后视为失败并按重试机制处理，审计会记录首字时间。", streamFirstCharTimeoutEnabled: "启用流式首字延迟超时", streamFirstCharTimeoutEnabledHelp: "默认关闭。开启后，流式请求从收到响应头到首个字符/token 到达的最长时间（5–60 秒）。超时后视为失败并按重试机制处理，审计会记录首字时间。", streamIdleTimeout: "流式空闲超时", streamIdleTimeoutHelp: "流式响应中连续无有效生成内容或工具进度的最长等待时间；心跳与内部控制事件不会延长等待，超时后主动中断。" },
       egressProxyProfiles: {
         title: "代理地址库",
         libraryTitle: "代理地址库",
@@ -1075,8 +1075,7 @@ const resources = {
         hide: "隐藏完整代理地址",
         revealUnavailable: "只能查看已保存共享代理配置的完整地址",
       },
-      settingsBuildForbidden: {        markInvalid: "按错误码标记失效",
-        markInvalidHelp: "启用后，Grok Build 返回 403 且错误码命中下方规则时，将账号标记为失效并移出调度。",
+      settingsBuildForbidden: {        markInvalid: "按错误码标记失效",        markInvalidHelp: "启用后，Grok Build 返回 403 且错误码命中下方规则时，将账号标记为失效并移出调度。",
         codes: "失效错误码",
         codesHelp: "每行填写一个错误码，完整匹配 JSON 响应中的 code 或 error.code（忽略大小写），最多 32 个。",
         codesInvalid: "请填写 1–32 个有效错误码，仅支持字母、数字、点、下划线、冒号和连字符。",
