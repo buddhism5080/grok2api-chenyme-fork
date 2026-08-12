@@ -237,7 +237,7 @@ export function AccountsPage() {
     queryFn: () => listAccounts({
       provider, page, pageSize, search: debouncedSearch, type: typeFilter, status: statusFilter, egress: egressFilter,
       renewal: provider === "grok_build" ? renewalFilter : undefined,
-      risk: provider === "grok_build" ? riskFilter : undefined,
+      risk: riskFilter || undefined,
       agreement: provider === "grok_web" ? agreementFilter : undefined,
       association: associationFilter || undefined,
       sortBy: sort.field, sortOrder: sort.order,
@@ -1361,10 +1361,10 @@ export function AccountsPage() {
                   { value: "refreshable", label: t("accountCredential.autoRefresh") },
                   { value: "unrefreshable", label: t("accountCredential.noAutoRefresh") },
                 ] }] : []),
-                ...(provider === "grok_build" ? [{ id: "risk", label: t("accounts.riskFilter"), value: riskFilter, onChange: (value: string) => { setRiskFilter(value); setPage(1); }, options: [
+                { id: "risk", label: t("accounts.riskFilter"), value: riskFilter, onChange: (value: string) => { setRiskFilter(value); setPage(1); }, options: [
                   { value: "flagged", label: t("accounts.botRisk") },
                   { value: "normal", label: t("accounts.riskNormal") },
-                ] }] : []),
+                ] },
                 ...(provider === "grok_web" ? [{ id: "agreement", label: t("accounts.agreementFilter"), value: agreementFilter, onChange: (value: string) => { setAgreementFilter(value); setPage(1); }, options: [
                   { value: "nsfwEnabled", label: t("accounts.agreementNsfwEnabled") },
                   { value: "nsfwDisabled", label: t("accounts.agreementNsfwDisabled") },

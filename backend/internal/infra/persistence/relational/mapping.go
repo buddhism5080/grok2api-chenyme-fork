@@ -182,8 +182,8 @@ func normalizedBuildBotFlagSource(provider account.Provider, credential *account
 	return normalizeBuildBotFlagSource(provider, credential.BuildBotFlagSource)
 }
 
-func normalizeBuildBotFlagSource(provider account.Provider, source int) int {
-	if provider == account.ProviderBuild && (source == 1 || source == 2) {
+func normalizeBuildBotFlagSource(_ account.Provider, source int) int {
+	if source == 1 || source == 2 {
 		return source
 	}
 	return 0

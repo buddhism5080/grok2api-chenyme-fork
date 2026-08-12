@@ -196,8 +196,8 @@ type Credential struct {
 	// 不替代 Billing 快照，不等同于 BuildAPIFallback，也不表示请求应走 XAI。
 	// 普通导入/upsert/token refresh/SSO 转换不得清除；仅显式管理员 PATCH 可改。
 	BuildSuperEntitled bool
-	// BuildBotFlagSource 是从 Build access token 提取并持久化的非敏感路由元数据。
-	// 仅精确值 1、2 表示风控；0 表示未标记或非 Build 账号。
+	// BuildBotFlagSource 是从 access/SSO JWT 提取并持久化的非敏感路由元数据。
+	// 仅精确值 1、2 表示风控；0 表示未标记。Build / Web / Console 均可持久化。
 	BuildBotFlagSource int
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

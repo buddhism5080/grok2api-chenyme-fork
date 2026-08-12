@@ -19,7 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestNewAccountResponseExposesBuildBotFlagOnlyForBuild(t *testing.T) {
+func TestNewAccountResponseExposesBuildBotFlagForProviders(t *testing.T) {
 	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
 	build := newAccountResponse(accountapp.View{
 		Credential:      accountdomain.Credential{Provider: accountdomain.ProviderBuild, BuildRouteMode: accountdomain.BuildRouteXAI, WebNSFWEnabledAt: &now, WebTermsAcceptedAt: &now},
@@ -32,8 +32,8 @@ func TestNewAccountResponseExposesBuildBotFlagOnlyForBuild(t *testing.T) {
 		Credential:      accountdomain.Credential{Provider: accountdomain.ProviderWeb, WebNSFWEnabledAt: &now, WebTermsAcceptedAt: &now},
 		BuildBotFlagged: true,
 	})
-	if web.BuildBotFlagged || web.BuildRouteMode != string(accountdomain.BuildRouteAuto) || web.WebNSFWEnabledAt == nil || !web.WebNSFWEnabledAt.Equal(now) || web.WebTermsAcceptedAt == nil || !web.WebTermsAcceptedAt.Equal(now) {
-		t.Fatalf("non-Build metadata = %#v", web)
+	if !web.BuildBotFlagged || web.BuildRouteMode != string(accountdomain.BuildRouteAuto) || web.WebNSFWEnabledAt == nil || !web.WebNSFWEnabledAt.Equal(now) || web.WebTermsAcceptedAt == nil || !web.WebTermsAcceptedAt.Equal(now) {
+		t.Fatalf("web metadata = %#v", web)
 	}
 }
 

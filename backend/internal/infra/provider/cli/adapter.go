@@ -26,6 +26,7 @@ import (
 	settingsdomain "github.com/chenyme/grok2api/backend/internal/domain/settings"
 	infraegress "github.com/chenyme/grok2api/backend/internal/infra/egress"
 	"github.com/chenyme/grok2api/backend/internal/infra/provider"
+	"github.com/chenyme/grok2api/backend/internal/infra/provider/botrisk"
 	"github.com/chenyme/grok2api/backend/internal/infra/provider/conversation"
 	"github.com/chenyme/grok2api/backend/internal/infra/security"
 	"github.com/chenyme/grok2api/backend/internal/pkg/reasoningreplay"
@@ -110,11 +111,10 @@ func (a *Adapter) CredentialMetadata(credential account.Credential) provider.Cre
 	if err != nil {
 		return provider.CredentialMetadata{}
 	}
-	claims := decodeJWTClaims(accessToken)
-	if claims == nil {
+	source, inspected := botrisk.SourceFromToken(accessToken)
+	if !inspected {
 		return provider.CredentialMetadata{}
 	}
-	source := buildBotFlagSourceFromClaims(claims)
 	return provider.CredentialMetadata{
 		BuildBotFlagInspected: true,
 		BuildBotFlagged:       source != 0,
@@ -122,51 +122,9 @@ func (a *Adapter) CredentialMetadata(credential account.Credential) provider.Cre
 	}
 }
 
-// buildBotFlagSourceFromClaims returns the bot-risk source from JWT claims.
-// Accepts bot_flag_source, botflagsource, or bfs (case-insensitive keys); only JSON numbers
-// 1 and 2 count (string "1"/"2" do not). Preference order: bot_flag_source, botflagsource, bfs.
+// buildBotFlagSourceFromClaims keeps package-local tests and call sites stable.
 func buildBotFlagSourceFromClaims(claims map[string]any) int {
-	if claims == nil {
-		return 0
-	}
-	for _, key := range []string{"bot_flag_source", "botflagsource", "bfs"} {
-		if source := botFlagSourceClaim(claims, key); source != 0 {
-			return source
-		}
-	}
-	return 0
-}
-
-func botFlagSourceClaim(claims map[string]any, key string) int {
-	value, ok := claimValueCaseInsensitive(claims, key)
-	if !ok {
-		return 0
-	}
-	number, ok := value.(float64)
-	if !ok {
-		return 0
-	}
-	switch number {
-	case 1, 2:
-		return int(number)
-	default:
-		return 0
-	}
-}
-
-// claimValueCaseInsensitive returns the first claim value whose key matches target
-// case-insensitively. Exact match is preferred when present.
-func claimValueCaseInsensitive(claims map[string]any, key string) (any, bool) {
-	if value, ok := claims[key]; ok {
-		return value, true
-	}
-	target := strings.ToLower(key)
-	for candidate, value := range claims {
-		if strings.ToLower(candidate) == target {
-			return value, true
-		}
-	}
-	return nil, false
+	return botrisk.SourceFromClaims(claims)
 }
 
 // buildBotFlaggedFromClaims reports whether JWT claims mark a Build account as bot-risked.

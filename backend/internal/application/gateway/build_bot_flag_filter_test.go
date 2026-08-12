@@ -9,7 +9,7 @@ import (
 
 func TestApplyBuildBotFlaggedFilterOnlyAffectsBuild(t *testing.T) {
 	selector := NewSelector(nil, nil, nil, nil, 0, 0, 0)
-	selector.UpdateExcludeBuildBotFlaggedFromScheduling(true)
+	selector.UpdateExcludeBotFlaggedFromScheduling(true, false, false)
 
 	values := []account.RoutingCandidate{
 		{Credential: account.Credential{ID: 1, Provider: account.ProviderBuild}},
@@ -35,10 +35,19 @@ func TestApplyBuildBotFlaggedFilterOnlyAffectsBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(webFiltered) != 2 {
-		t.Fatalf("web candidates should not be filtered, got %d", len(webFiltered))
+		t.Fatalf("web candidates should not be filtered when web switch off, got %d", len(webFiltered))
 	}
 
-	selector.UpdateExcludeBuildBotFlaggedFromScheduling(false)
+	selector.UpdateExcludeBotFlaggedFromScheduling(true, true, false)
+	webFiltered, err = selector.applyBuildBotFlaggedFilter(context.Background(), account.ProviderWeb, webValues)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(webFiltered) != 0 {
+		t.Fatalf("web candidates should be filtered when web switch on, got %d", len(webFiltered))
+	}
+
+	selector.UpdateExcludeBotFlaggedFromScheduling(false, false, false)
 	unfiltered, err := selector.applyBuildBotFlaggedFilter(context.Background(), account.ProviderBuild, values)
 	if err != nil {
 		t.Fatal(err)

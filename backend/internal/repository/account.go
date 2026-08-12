@@ -21,15 +21,17 @@ type AccountUpsertResult struct {
 }
 
 // BuildBotFlagCredential is the minimal encrypted credential projection used to
-// rebuild persisted Build bot-risk metadata outside the request path.
+// rebuild persisted bot-risk metadata outside the request path.
 type BuildBotFlagCredential struct {
 	AccountID            uint64
+	Provider             account.Provider
 	EncryptedAccessToken string
 	StoredSource         int
 }
 
 type BuildBotFlagSourceUpdate struct {
 	AccountID                    uint64
+	Provider                     account.Provider
 	ExpectedEncryptedAccessToken string
 	Source                       int
 }

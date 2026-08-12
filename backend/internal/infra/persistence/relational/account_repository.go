@@ -212,59 +212,82 @@ func (r *AccountRepository) CountAvailableAmong(ctx context.Context, providerVal
 	return total, nil
 }
 
-// CountBuildBotFlagged counts persisted Build risk metadata without loading an
+// CountBuildBotFlagged counts persisted bot-risk metadata without loading an
 // account-ID slice or credential material.
 func (r *AccountRepository) CountBuildBotFlagged(ctx context.Context) (int64, error) {
 	var count int64
 	err := r.db.db.WithContext(ctx).Model(&accountModel{}).
 		Joins("JOIN account_credentials AS credential ON credential.account_id = provider_accounts.id").
-		Where("provider_accounts.provider = ? AND credential.build_bot_flag_source IN (1,2)", account.ProviderBuild).
+		Where("credential.build_bot_flag_source IN (1,2)").
+		Count(&count).Error
+	return count, err
+}
+
+// CountBotFlaggedByProvider counts persisted bot-risk accounts for one provider.
+func (r *AccountRepository) CountBotFlaggedByProvider(ctx context.Context, provider account.Provider) (int64, error) {
+	var count int64
+	err := r.db.db.WithContext(ctx).Model(&accountModel{}).
+		Joins("JOIN account_credentials AS credential ON credential.account_id = provider_accounts.id").
+		Where("provider_accounts.provider = ? AND credential.build_bot_flag_source IN (1,2)", provider).
 		Count(&count).Error
 	return count, err
 }
 
 // CountAvailableBuildBotFlagged uses the same availability predicate as
-// Summarize without expanding a potentially unbounded ID list.
+// Summarize without expanding a potentially unbounded ID list. Build-only for
+// backward-compatible callers; prefer CountAvailableBotFlaggedByProvider.
 func (r *AccountRepository) CountAvailableBuildBotFlagged(ctx context.Context, now time.Time) (int64, error) {
+	return r.CountAvailableBotFlaggedByProvider(ctx, account.ProviderBuild, now)
+}
+
+// CountAvailableBotFlaggedByProvider counts active bot-risk accounts for one provider.
+func (r *AccountRepository) CountAvailableBotFlaggedByProvider(ctx context.Context, provider account.Provider, now time.Time) (int64, error) {
 	var count int64
 	query := r.db.db.WithContext(ctx).Model(&accountModel{}).
 		Joins("JOIN account_credentials AS credential ON credential.account_id = provider_accounts.id").
-		Where("provider_accounts.provider = ? AND credential.build_bot_flag_source IN (1,2)", account.ProviderBuild)
+		Where("provider_accounts.provider = ? AND credential.build_bot_flag_source IN (1,2)", provider)
 	query = applyAccountStatusFilter(query, "active", now)
 	err := query.Count(&count).Error
 	return count, err
 }
 
 // ListBuildBotFlaggedAccountIDs reads persisted non-sensitive metadata only; it
-// never loads or decrypts access tokens on the scheduling path.
+// never loads or decrypts access tokens on the scheduling path. Build-only for
+// backward-compatible callers; prefer ListBotFlaggedAccountIDsByProvider.
 func (r *AccountRepository) ListBuildBotFlaggedAccountIDs(ctx context.Context) ([]uint64, error) {
+	return r.ListBotFlaggedAccountIDsByProvider(ctx, account.ProviderBuild)
+}
+
+// ListBotFlaggedAccountIDsByProvider returns bot-risk account IDs for one provider.
+func (r *AccountRepository) ListBotFlaggedAccountIDsByProvider(ctx context.Context, provider account.Provider) ([]uint64, error) {
 	var ids []uint64
 	err := r.db.db.WithContext(ctx).
 		Table("provider_accounts AS account").
 		Select("account.id").
 		Joins("JOIN account_credentials AS credential ON credential.account_id = account.id").
-		Where("account.provider = ? AND credential.build_bot_flag_source IN (1,2)", account.ProviderBuild).
+		Where("account.provider = ? AND credential.build_bot_flag_source IN (1,2)", provider).
 		Order("account.id ASC").
 		Scan(&ids).Error
 	return ids, err
 }
 
 // ListBuildBotFlagCredentialBatch returns the minimum projection required for
-// startup backfill of the persisted risk source.
+// startup backfill of the persisted risk source across all providers.
 func (r *AccountRepository) ListBuildBotFlagCredentialBatch(ctx context.Context, afterID uint64, limit int) ([]repository.BuildBotFlagCredential, error) {
 	if limit < 1 {
 		return []repository.BuildBotFlagCredential{}, nil
 	}
 	var rows []struct {
 		AccountID            uint64
+		Provider             string
 		EncryptedAccessToken string
 		StoredSource         int
 	}
 	err := r.db.db.WithContext(ctx).
 		Table("provider_accounts AS account").
-		Select("account.id AS account_id, credential.encrypted_primary AS encrypted_access_token, credential.build_bot_flag_source AS stored_source").
+		Select("account.id AS account_id, account.provider AS provider, credential.encrypted_primary AS encrypted_access_token, credential.build_bot_flag_source AS stored_source").
 		Joins("JOIN account_credentials AS credential ON credential.account_id = account.id").
-		Where("account.provider = ? AND account.id > ?", account.ProviderBuild, afterID).
+		Where("account.id > ?", afterID).
 		Order("account.id ASC").Limit(limit).Scan(&rows).Error
 	if err != nil {
 		return nil, err
@@ -272,37 +295,121 @@ func (r *AccountRepository) ListBuildBotFlagCredentialBatch(ctx context.Context,
 	result := make([]repository.BuildBotFlagCredential, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, repository.BuildBotFlagCredential{
-			AccountID: row.AccountID, EncryptedAccessToken: row.EncryptedAccessToken, StoredSource: row.StoredSource,
+			AccountID: row.AccountID, Provider: account.Provider(row.Provider), EncryptedAccessToken: row.EncryptedAccessToken, StoredSource: row.StoredSource,
 		})
 	}
 	return result, nil
 }
 
 // UpdateBuildBotFlagSources persists a bounded backfill batch transactionally.
+// When ExpectedEncryptedAccessToken is empty, the source is written unconditionally
+// (used for linked-peer propagation that does not re-decrypt peer tokens).
 func (r *AccountRepository) UpdateBuildBotFlagSources(ctx context.Context, values []repository.BuildBotFlagSourceUpdate) error {
 	if len(values) == 0 {
 		return nil
 	}
-	changed := false
+	changedProviders := map[account.Provider]struct{}{}
 	err := r.db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, value := range values {
-			source := normalizeBuildBotFlagSource(account.ProviderBuild, value.Source)
-			result := tx.Model(&accountCredentialModel{}).
-				Where("account_id = ? AND encrypted_primary = ?", value.AccountID, value.ExpectedEncryptedAccessToken).
-				Update("build_bot_flag_source", source)
+			source := normalizeBuildBotFlagSource(value.Provider, value.Source)
+			query := tx.Model(&accountCredentialModel{}).Where("account_id = ?", value.AccountID)
+			if value.ExpectedEncryptedAccessToken != "" {
+				query = query.Where("encrypted_primary = ?", value.ExpectedEncryptedAccessToken)
+			}
+			result := query.Update("build_bot_flag_source", source)
 			if result.Error != nil {
 				return result.Error
 			}
 			if result.RowsAffected > 0 {
-				changed = true
+				provider := value.Provider
+				if provider == "" {
+					var row struct{ Provider string }
+					if err := tx.Model(&accountModel{}).Select("provider").Where("id = ?", value.AccountID).Take(&row).Error; err == nil {
+						provider = account.Provider(row.Provider)
+					}
+				}
+				if provider != "" {
+					changedProviders[provider] = struct{}{}
+				}
 			}
 		}
 		return nil
 	})
-	if err == nil && changed {
-		r.notifyInvalidation(ctx, repository.InvalidationEvent{Kind: repository.InvalidationAccountCredentialChanged, Provider: account.ProviderBuild})
+	if err == nil {
+		for provider := range changedProviders {
+			r.notifyInvalidation(ctx, repository.InvalidationEvent{Kind: repository.InvalidationAccountCredentialChanged, Provider: provider})
+		}
 	}
 	return err
+}
+
+// ListLinkedBotRiskPeerIDs returns one-hop and two-hop linked account IDs for bot-risk
+// propagation: Web↔Build, Web↔Console, and Build↔Console via a shared Web hub.
+func (r *AccountRepository) ListLinkedBotRiskPeerIDs(ctx context.Context, accountID uint64) ([]uint64, error) {
+	if accountID == 0 {
+		return nil, nil
+	}
+	var provider string
+	if err := r.db.db.WithContext(ctx).Model(&accountModel{}).Select("provider").Where("id = ?", accountID).Take(&provider).Error; err != nil {
+		return nil, err
+	}
+	ids := map[uint64]struct{}{}
+	add := func(id uint64) {
+		if id != 0 && id != accountID {
+			ids[id] = struct{}{}
+		}
+	}
+	switch account.Provider(provider) {
+	case account.ProviderWeb:
+		var buildIDs, consoleIDs []uint64
+		if err := r.db.db.WithContext(ctx).Table("account_provider_links").Where("web_account_id = ?", accountID).Pluck("build_account_id", &buildIDs).Error; err != nil {
+			return nil, err
+		}
+		if err := r.db.db.WithContext(ctx).Table("web_console_account_links").Where("web_account_id = ?", accountID).Pluck("console_account_id", &consoleIDs).Error; err != nil {
+			return nil, err
+		}
+		for _, id := range buildIDs {
+			add(id)
+		}
+		for _, id := range consoleIDs {
+			add(id)
+		}
+	case account.ProviderBuild:
+		var webIDs []uint64
+		if err := r.db.db.WithContext(ctx).Table("account_provider_links").Where("build_account_id = ?", accountID).Pluck("web_account_id", &webIDs).Error; err != nil {
+			return nil, err
+		}
+		for _, webID := range webIDs {
+			add(webID)
+			var consoleIDs []uint64
+			if err := r.db.db.WithContext(ctx).Table("web_console_account_links").Where("web_account_id = ?", webID).Pluck("console_account_id", &consoleIDs).Error; err != nil {
+				return nil, err
+			}
+			for _, id := range consoleIDs {
+				add(id)
+			}
+		}
+	case account.ProviderConsole:
+		var webIDs []uint64
+		if err := r.db.db.WithContext(ctx).Table("web_console_account_links").Where("console_account_id = ?", accountID).Pluck("web_account_id", &webIDs).Error; err != nil {
+			return nil, err
+		}
+		for _, webID := range webIDs {
+			add(webID)
+			var buildIDs []uint64
+			if err := r.db.db.WithContext(ctx).Table("account_provider_links").Where("web_account_id = ?", webID).Pluck("build_account_id", &buildIDs).Error; err != nil {
+				return nil, err
+			}
+			for _, id := range buildIDs {
+				add(id)
+			}
+		}
+	}
+	result := make([]uint64, 0, len(ids))
+	for id := range ids {
+		result = append(result, id)
+	}
+	return result, nil
 }
 
 func (r *AccountRepository) Summarize(ctx context.Context, now time.Time) ([]repository.AccountSummary, error) {

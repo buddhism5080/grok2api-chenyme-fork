@@ -129,7 +129,9 @@ type clientKeyDefaultsConfigDTO struct {
 type accountsConfigDTO struct {
 	MarkBuildForbiddenReauth             *bool     `json:"markBuildForbiddenReauth,omitempty"`
 	BuildForbiddenReauthCodes            *[]string `json:"buildForbiddenReauthCodes,omitempty"`
-	ExcludeBuildBotFlaggedFromScheduling *bool     `json:"excludeBuildBotFlaggedFromScheduling,omitempty"`
+	ExcludeBuildBotFlaggedFromScheduling   *bool     `json:"excludeBuildBotFlaggedFromScheduling,omitempty"`
+	ExcludeWebBotFlaggedFromScheduling    *bool     `json:"excludeWebBotFlaggedFromScheduling,omitempty"`
+	ExcludeConsoleBotFlaggedFromScheduling *bool     `json:"excludeConsoleBotFlaggedFromScheduling,omitempty"`
 	AutoCleanReauthEnabled               bool      `json:"autoCleanReauthEnabled"`
 	AutoCleanReauthInterval              string    `json:"autoCleanReauthInterval"`
 	AutoCleanReauthMinAge                string    `json:"autoCleanReauthMinAge"`
@@ -249,9 +251,13 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 			MarkBuildForbiddenReauth:                     boolValue(value.Accounts.MarkBuildForbiddenReauth),
 			BuildForbiddenReauthCodes:                    stringSliceValue(value.Accounts.BuildForbiddenReauthCodes),
 			ExcludeBuildBotFlaggedFromScheduling:         boolValue(value.Accounts.ExcludeBuildBotFlaggedFromScheduling),
+			ExcludeWebBotFlaggedFromScheduling:          boolValue(value.Accounts.ExcludeWebBotFlaggedFromScheduling),
+			ExcludeConsoleBotFlaggedFromScheduling:      boolValue(value.Accounts.ExcludeConsoleBotFlaggedFromScheduling),
 			MarkBuildForbiddenReauthProvided:             value.Accounts.MarkBuildForbiddenReauth != nil,
 			BuildForbiddenReauthCodesProvided:            value.Accounts.BuildForbiddenReauthCodes != nil,
 			ExcludeBuildBotFlaggedFromSchedulingProvided: value.Accounts.ExcludeBuildBotFlaggedFromScheduling != nil,
+			ExcludeWebBotFlaggedFromSchedulingProvided:  value.Accounts.ExcludeWebBotFlaggedFromScheduling != nil,
+			ExcludeConsoleBotFlaggedFromSchedulingProvided: value.Accounts.ExcludeConsoleBotFlaggedFromScheduling != nil,
 			AutoCleanReauthEnabled:                       value.Accounts.AutoCleanReauthEnabled,
 			AutoCleanReauthInterval:                      value.Accounts.AutoCleanReauthInterval,
 			AutoCleanReauthMinAge:                        value.Accounts.AutoCleanReauthMinAge,
@@ -324,6 +330,8 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 				MarkBuildForbiddenReauth:             boolPointer(config.Accounts.MarkBuildForbiddenReauth),
 				BuildForbiddenReauthCodes:            stringSlicePointer(config.Accounts.BuildForbiddenReauthCodes),
 				ExcludeBuildBotFlaggedFromScheduling: boolPointer(config.Accounts.ExcludeBuildBotFlaggedFromScheduling),
+				ExcludeWebBotFlaggedFromScheduling: boolPointer(config.Accounts.ExcludeWebBotFlaggedFromScheduling),
+				ExcludeConsoleBotFlaggedFromScheduling: boolPointer(config.Accounts.ExcludeConsoleBotFlaggedFromScheduling),
 				AutoCleanReauthEnabled:               config.Accounts.AutoCleanReauthEnabled,
 				AutoCleanReauthInterval:              config.Accounts.AutoCleanReauthInterval,
 				AutoCleanReauthMinAge:                config.Accounts.AutoCleanReauthMinAge,

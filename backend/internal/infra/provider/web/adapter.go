@@ -10,6 +10,7 @@ import (
 	settingsdomain "github.com/chenyme/grok2api/backend/internal/domain/settings"
 	infraegress "github.com/chenyme/grok2api/backend/internal/infra/egress"
 	"github.com/chenyme/grok2api/backend/internal/infra/provider"
+	"github.com/chenyme/grok2api/backend/internal/infra/provider/botrisk"
 	"github.com/chenyme/grok2api/backend/internal/infra/security"
 	"github.com/chenyme/grok2api/backend/internal/repository"
 )
@@ -107,6 +108,28 @@ func (a *Adapter) config() Config {
 }
 
 func (a *Adapter) Provider() account.Provider { return account.ProviderWeb }
+
+// CredentialMetadata extracts bot-risk claims from a Web SSO token when it is a JWT.
+// Non-JWT SSO strings and decryption failures leave the account unmarked.
+func (a *Adapter) CredentialMetadata(credential account.Credential) provider.CredentialMetadata {
+	if credential.Provider != account.ProviderWeb || a.cipher == nil || credential.EncryptedAccessToken == "" {
+		return provider.CredentialMetadata{}
+	}
+	token, err := a.cipher.Decrypt(credential.EncryptedAccessToken)
+	if err != nil {
+		return provider.CredentialMetadata{}
+	}
+	source, inspected := botrisk.SourceFromToken(token)
+	if !inspected {
+		return provider.CredentialMetadata{}
+	}
+	return provider.CredentialMetadata{
+		BuildBotFlagInspected: true,
+		BuildBotFlagged:       source != 0,
+		BuildBotFlagSource:    source,
+	}
+}
+
 
 func (a *Adapter) QuotaMode(upstreamModel string) string {
 	if spec, ok := Resolve(upstreamModel); ok {

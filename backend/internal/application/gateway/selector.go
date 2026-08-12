@@ -262,7 +262,7 @@ type Selector struct {
 	cooldownMax            time.Duration
 	capacityWait           time.Duration
 	preferFreeBuild        bool
-	excludeBuildBotFlagged bool
+	excludeBotFlagged map[account.Provider]bool
 	segmentedConfig        segmentedSelectorConfig
 	segmentedState         segmentedSelectorState
 	configMu               sync.RWMutex
@@ -343,16 +343,31 @@ func (s *Selector) routingConfig() (time.Duration, time.Duration, time.Duration,
 	return s.stickyTTL, s.cooldownBase, s.cooldownMax, s.capacityWait
 }
 
-// UpdateExcludeBuildBotFlaggedFromScheduling toggles Build bot-risk exclusion from
-// scheduling and invalidates Build candidate caches when the value changes.
-func (s *Selector) UpdateExcludeBuildBotFlaggedFromScheduling(value bool) {
+// UpdateExcludeBotFlaggedFromScheduling toggles per-provider bot-risk exclusion
+// from scheduling and invalidates candidate caches when values change.
+func (s *Selector) UpdateExcludeBotFlaggedFromScheduling(build, web, console bool) {
 	s.configMu.Lock()
-	changed := s.excludeBuildBotFlagged != value
-	s.excludeBuildBotFlagged = value
-	s.configMu.Unlock()
-	if changed {
-		s.invalidateProviderCandidateCache(account.ProviderBuild)
+	if s.excludeBotFlagged == nil {
+		s.excludeBotFlagged = make(map[account.Provider]bool, 3)
 	}
+	changed := map[account.Provider]bool{}
+	for provider, value := range map[account.Provider]bool{
+		account.ProviderBuild: build, account.ProviderWeb: web, account.ProviderConsole: console,
+	} {
+		if s.excludeBotFlagged[provider] != value {
+			changed[provider] = true
+		}
+		s.excludeBotFlagged[provider] = value
+	}
+	s.configMu.Unlock()
+	for provider := range changed {
+		s.invalidateProviderCandidateCache(provider)
+	}
+}
+
+// UpdateExcludeBuildBotFlaggedFromScheduling keeps older call sites working.
+func (s *Selector) UpdateExcludeBuildBotFlaggedFromScheduling(value bool) {
+	s.UpdateExcludeBotFlaggedFromScheduling(value, s.excludeBotFlaggedEnabled(account.ProviderWeb), s.excludeBotFlaggedEnabled(account.ProviderConsole))
 }
 
 func (s *Selector) preferFreeBuildEnabled() bool {
@@ -361,10 +376,17 @@ func (s *Selector) preferFreeBuildEnabled() bool {
 	return s.preferFreeBuild
 }
 
-func (s *Selector) excludeBuildBotFlaggedEnabled() bool {
+func (s *Selector) excludeBotFlaggedEnabled(provider account.Provider) bool {
 	s.configMu.RLock()
 	defer s.configMu.RUnlock()
-	return s.excludeBuildBotFlagged
+	if s.excludeBotFlagged == nil {
+		return false
+	}
+	return s.excludeBotFlagged[provider]
+}
+
+func (s *Selector) excludeBuildBotFlaggedEnabled() bool {
+	return s.excludeBotFlaggedEnabled(account.ProviderBuild)
 }
 
 func (s *Selector) invalidateProviderCandidateCache(provider account.Provider) {
@@ -384,10 +406,15 @@ func (s *Selector) invalidateProviderCandidateCache(provider account.Provider) {
 }
 
 func (s *Selector) applyBuildBotFlaggedFilter(_ context.Context, provider account.Provider, values []account.RoutingCandidate) ([]account.RoutingCandidate, error) {
-	if provider != account.ProviderBuild || len(values) == 0 {
+	if len(values) == 0 {
 		return values, nil
 	}
-	if !s.excludeBuildBotFlaggedEnabled() {
+	switch provider {
+	case account.ProviderBuild, account.ProviderWeb, account.ProviderConsole:
+	default:
+		return values, nil
+	}
+	if !s.excludeBotFlaggedEnabled(provider) {
 		return values, nil
 	}
 	filtered := make([]account.RoutingCandidate, 0, len(values))

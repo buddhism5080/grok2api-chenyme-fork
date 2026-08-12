@@ -47,8 +47,8 @@ func TestBuildBotFlagIndexDrivesRoutingFilteringAndAvailableCount(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if web.BuildBotFlagSource != 0 {
-		t.Fatalf("non-Build source = %d, want 0", web.BuildBotFlagSource)
+	if web.BuildBotFlagSource != 2 {
+		t.Fatalf("web source = %d, want 2", web.BuildBotFlagSource)
 	}
 
 	ids, err := repo.ListBuildBotFlaggedAccountIDs(ctx)
@@ -59,8 +59,12 @@ func TestBuildBotFlagIndexDrivesRoutingFilteringAndAvailableCount(t *testing.T) 
 		t.Fatalf("flagged IDs = %v", ids)
 	}
 	flaggedCount, err := repo.CountBuildBotFlagged(ctx)
-	if err != nil || flaggedCount != 2 {
+	if err != nil || flaggedCount != 3 {
 		t.Fatalf("flagged count = %d, err=%v", flaggedCount, err)
+	}
+	buildFlagged, err := repo.CountBotFlaggedByProvider(ctx, account.ProviderBuild)
+	if err != nil || buildFlagged != 2 {
+		t.Fatalf("build flagged = %d, err=%v", buildFlagged, err)
 	}
 	available, err := repo.CountAvailableBuildBotFlagged(ctx, now)
 	if err != nil || available != 1 {
@@ -142,7 +146,7 @@ func TestUpdateTokensUpdatesAndNormalizesBuildBotFlagSourceAtomically(t *testing
 		t.Fatal(err)
 	}
 	web, err = repo.UpdateTokens(ctx, web.ID, "new", "", time.Now().UTC().Add(time.Hour), 2)
-	if err != nil || web.BuildBotFlagSource != 0 {
+	if err != nil || web.BuildBotFlagSource != 2 {
 		t.Fatalf("web credential = %#v, err=%v", web, err)
 	}
 }

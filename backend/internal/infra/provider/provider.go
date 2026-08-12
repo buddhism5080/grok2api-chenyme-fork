@@ -349,12 +349,13 @@ type CredentialCodecAdapter interface {
 // CredentialMetadata contains non-sensitive display data safely derived from a stored credential.
 // Raw tokens and complete JWT claims must never be exposed through this structure.
 type CredentialMetadata struct {
-	// BuildBotFlagInspected is true only when the Build token was successfully
-	// decrypted and decoded. False means the risk source is unknown, not clean.
+	// BuildBotFlagInspected is true only when the provider token was successfully
+	// decrypted and decoded as a JWT. False means the risk source is unknown, not clean.
 	BuildBotFlagInspected bool
 	// BuildBotFlagged is true when BuildBotFlagSource is 1 or 2.
 	BuildBotFlagged bool
 	// BuildBotFlagSource is the numeric bot_flag_source/botflagsource/bfs claim (1 or 2), or 0 when unset.
+	// Persisted for Build, Web, and Console accounts.
 	BuildBotFlagSource int
 }
 

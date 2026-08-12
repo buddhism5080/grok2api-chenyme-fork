@@ -276,9 +276,10 @@ type ClientKeyDefaultsConfig struct {
 type AccountsConfig struct {
 	MarkBuildForbiddenReauth  bool
 	BuildForbiddenReauthCodes []string
-	// ExcludeBuildBotFlaggedFromScheduling removes Build accounts with bot_flag_source/botflagsource/bfs in {1,2}
-	// from scheduling only. Linked Web/Console accounts are unaffected.
-	ExcludeBuildBotFlaggedFromScheduling bool
+	// Exclude*BotFlaggedFromScheduling removes bot-risk accounts (source 1/2) from that channel's scheduling.
+	ExcludeBuildBotFlaggedFromScheduling   bool
+	ExcludeWebBotFlaggedFromScheduling    bool
+	ExcludeConsoleBotFlaggedFromScheduling bool
 	AutoCleanReauthEnabled               bool
 	AutoCleanReauthInterval              Duration
 	AutoCleanReauthMinAge                Duration
@@ -852,7 +853,9 @@ func defaultConfig() Config {
 		Accounts: AccountsConfig{
 			MarkBuildForbiddenReauth:             false,
 			BuildForbiddenReauthCodes:            []string{"permission-denied"},
-			ExcludeBuildBotFlaggedFromScheduling: false,
+			ExcludeBuildBotFlaggedFromScheduling:   false,
+			ExcludeWebBotFlaggedFromScheduling:    false,
+			ExcludeConsoleBotFlaggedFromScheduling: false,
 			AutoCleanReauthEnabled:               false,
 			AutoCleanReauthInterval:              Duration(10 * time.Minute),
 			AutoCleanReauthMinAge:                Duration(time.Hour),

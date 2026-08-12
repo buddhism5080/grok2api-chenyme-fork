@@ -84,7 +84,7 @@ export type AccountDTO = {
   buildSuperEntitled: boolean;
   buildRouteMode: BuildRouteMode;
   buildBotFlagged: boolean;
-  /** Numeric bot_flag_source/botflagsource/bfs claim when risk-flagged: 1 or 2. */
+  /** Numeric bot_flag_source/botflagsource/bfs claim when risk-flagged: 1 or 2 (Build/Web/Console). */
   buildBotFlagSource?: number;
   egressNodeId?: string;
   egressAssignmentMode?: "manual" | "auto";

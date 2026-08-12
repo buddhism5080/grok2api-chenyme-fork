@@ -97,10 +97,14 @@ const buildBotFlagCacheKey = "build-bot-flagged-account-ids"
 
 type buildBotFlagIndexRepository interface {
 	ListBuildBotFlaggedAccountIDs(ctx context.Context) ([]uint64, error)
+	ListBotFlaggedAccountIDsByProvider(ctx context.Context, provider accountdomain.Provider) ([]uint64, error)
 	ListBuildBotFlagCredentialBatch(ctx context.Context, afterID uint64, limit int) ([]repository.BuildBotFlagCredential, error)
 	UpdateBuildBotFlagSources(ctx context.Context, values []repository.BuildBotFlagSourceUpdate) error
 	CountBuildBotFlagged(ctx context.Context) (int64, error)
+	CountBotFlaggedByProvider(ctx context.Context, provider accountdomain.Provider) (int64, error)
 	CountAvailableBuildBotFlagged(ctx context.Context, now time.Time) (int64, error)
+	CountAvailableBotFlaggedByProvider(ctx context.Context, provider accountdomain.Provider, now time.Time) (int64, error)
+	ListLinkedBotRiskPeerIDs(ctx context.Context, accountID uint64) ([]uint64, error)
 }
 
 type quotaRefreshState struct {
@@ -361,29 +365,37 @@ func (s *Service) Summary(ctx context.Context) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
-	if s.excludeBuildBotFlaggedFromSchedulingEnabled() && result.Risk > 0 {
+	for _, providerValue := range []accountdomain.Provider{accountdomain.ProviderBuild, accountdomain.ProviderWeb, accountdomain.ProviderConsole} {
+		if !s.excludeBotFlaggedFromSchedulingEnabled(providerValue) {
+			continue
+		}
 		var excluded int64
 		if hasIndex {
-			excluded, err = indexed.CountAvailableBuildBotFlagged(ctx, now)
+			excluded, err = indexed.CountAvailableBotFlaggedByProvider(ctx, providerValue, now)
 		} else {
-			excluded, err = s.accounts.CountAvailableAmong(ctx, accountdomain.ProviderBuild, flaggedIDs, now)
+			ids, listErr := s.listBotFlaggedAccountIDs(ctx, providerValue)
+			if listErr != nil {
+				return Summary{}, listErr
+			}
+			excluded, err = s.accounts.CountAvailableAmong(ctx, providerValue, ids, now)
 		}
 		if err != nil {
 			return Summary{}, err
 		}
-		if excluded > 0 {
-			buildKey := string(accountdomain.ProviderBuild)
-			build := result.Providers[buildKey]
-			if excluded > build.Available {
-				excluded = build.Available
-			}
-			build.Available -= excluded
-			result.Providers[buildKey] = build
-			if excluded > result.Available {
-				excluded = result.Available
-			}
-			result.Available -= excluded
+		if excluded <= 0 {
+			continue
 		}
+		key := string(providerValue)
+		providerSummary := result.Providers[key]
+		if excluded > providerSummary.Available {
+			excluded = providerSummary.Available
+		}
+		providerSummary.Available -= excluded
+		result.Providers[key] = providerSummary
+		if excluded > result.Available {
+			excluded = result.Available
+		}
+		result.Available -= excluded
 	}
 	return result, nil
 }
@@ -423,7 +435,7 @@ type Service struct {
 	autoClean              AutoCleanConfig
 	autoCleanRevision      uint64
 	autoCleanWake          chan struct{}
-	excludeBuildBotFlagged bool
+	excludeBotFlagged      map[accountdomain.Provider]bool
 	buildBotFlagCache      *resultcache.Cache[string, []uint64]
 	logger                 *slog.Logger
 	now                    func() time.Time
@@ -615,48 +627,74 @@ func (s *Service) List(ctx context.Context, page, pageSize int, search string, f
 }
 
 func (s *Service) buildBotFlaggedAccountIDs(ctx context.Context) ([]uint64, error) {
+	return s.listBotFlaggedAccountIDs(ctx, accountdomain.ProviderBuild)
+}
+
+func (s *Service) listBotFlaggedAccountIDs(ctx context.Context, provider accountdomain.Provider) ([]uint64, error) {
+	cacheKey := buildBotFlagCacheKey + ":" + string(provider)
 	if s.buildBotFlagCache == nil {
-		return s.loadBuildBotFlaggedAccountIDs(ctx)
+		return s.loadBotFlaggedAccountIDs(ctx, provider)
 	}
-	return s.buildBotFlagCache.Load(ctx, buildBotFlagCacheKey, s.now(), func() ([]uint64, error) {
-		return s.loadBuildBotFlaggedAccountIDs(ctx)
+	return s.buildBotFlagCache.Load(ctx, cacheKey, s.now(), func() ([]uint64, error) {
+		return s.loadBotFlaggedAccountIDs(ctx, provider)
 	})
 }
 
-// ListBuildBotFlaggedAccountIDs returns Build account IDs whose access-token claims
-// mark bot_flag_source/botflagsource/bfs as 1 or 2. Used by routing to optionally exclude them.
+// ListBuildBotFlaggedAccountIDs returns Build account IDs marked bot-risk.
 func (s *Service) ListBuildBotFlaggedAccountIDs(ctx context.Context) ([]uint64, error) {
-	return s.buildBotFlaggedAccountIDs(ctx)
+	return s.listBotFlaggedAccountIDs(ctx, accountdomain.ProviderBuild)
 }
 
-// UpdateExcludeBuildBotFlaggedFromScheduling hot-updates whether bot-risk Build
-// accounts are treated as non-schedulable in account summary available counts.
-func (s *Service) UpdateExcludeBuildBotFlaggedFromScheduling(value bool) {
+// ListBotFlaggedAccountIDs returns bot-risk account IDs for one provider.
+func (s *Service) ListBotFlaggedAccountIDs(ctx context.Context, provider accountdomain.Provider) ([]uint64, error) {
+	return s.listBotFlaggedAccountIDs(ctx, provider)
+}
+
+// UpdateExcludeBotFlaggedFromScheduling hot-updates per-provider exclusion of
+// bot-risk accounts from scheduling and summary available counts.
+func (s *Service) UpdateExcludeBotFlaggedFromScheduling(build, web, console bool) {
 	s.autoCleanMu.Lock()
-	s.excludeBuildBotFlagged = value
+	if s.excludeBotFlagged == nil {
+		s.excludeBotFlagged = make(map[accountdomain.Provider]bool, 3)
+	}
+	s.excludeBotFlagged[accountdomain.ProviderBuild] = build
+	s.excludeBotFlagged[accountdomain.ProviderWeb] = web
+	s.excludeBotFlagged[accountdomain.ProviderConsole] = console
 	s.autoCleanMu.Unlock()
 }
 
-func (s *Service) excludeBuildBotFlaggedFromSchedulingEnabled() bool {
-	s.autoCleanMu.RLock()
-	defer s.autoCleanMu.RUnlock()
-	return s.excludeBuildBotFlagged
+// UpdateExcludeBuildBotFlaggedFromScheduling keeps older call sites working.
+func (s *Service) UpdateExcludeBuildBotFlaggedFromScheduling(value bool) {
+	s.UpdateExcludeBotFlaggedFromScheduling(value, s.excludeBotFlaggedFromSchedulingEnabled(accountdomain.ProviderWeb), s.excludeBotFlaggedFromSchedulingEnabled(accountdomain.ProviderConsole))
 }
 
-func (s *Service) loadBuildBotFlaggedAccountIDs(ctx context.Context) ([]uint64, error) {
+func (s *Service) excludeBotFlaggedFromSchedulingEnabled(provider accountdomain.Provider) bool {
+	s.autoCleanMu.RLock()
+	defer s.autoCleanMu.RUnlock()
+	if s.excludeBotFlagged == nil {
+		return false
+	}
+	return s.excludeBotFlagged[provider]
+}
+
+func (s *Service) excludeBuildBotFlaggedFromSchedulingEnabled() bool {
+	return s.excludeBotFlaggedFromSchedulingEnabled(accountdomain.ProviderBuild)
+}
+
+func (s *Service) loadBotFlaggedAccountIDs(ctx context.Context, provider accountdomain.Provider) ([]uint64, error) {
 	if indexed, ok := s.accounts.(buildBotFlagIndexRepository); ok {
-		return indexed.ListBuildBotFlaggedAccountIDs(ctx)
+		return indexed.ListBotFlaggedAccountIDsByProvider(ctx, provider)
 	}
 	const batchSize = 500
 	result := make([]uint64, 0)
 	var afterID uint64
 	for {
-		values, _, err := s.accounts.ListProviderAccountBatch(ctx, accountdomain.ProviderBuild, afterID, batchSize)
+		values, _, err := s.accounts.ListProviderAccountBatch(ctx, provider, afterID, batchSize)
 		if err != nil {
 			return nil, err
 		}
 		for _, value := range values {
-			if s.credentialMetadata(value).BuildBotFlagged {
+			if s.buildBotFlagMetadata(value).BuildBotFlagged {
 				result = append(result, value.ID)
 			}
 		}
@@ -668,8 +706,8 @@ func (s *Service) loadBuildBotFlaggedAccountIDs(ctx context.Context) ([]uint64, 
 }
 
 // RebuildBuildBotFlagIndex backfills persisted non-sensitive routing metadata
-// before the gateway begins serving traffic. Subsequent imports and refreshes
-// update the source atomically with the encrypted access token.
+// for Build/Web/Console before the gateway begins serving traffic. Linked peers
+// inherit a positive risk mark when any side is flagged.
 func (s *Service) RebuildBuildBotFlagIndex(ctx context.Context) error {
 	indexed, ok := s.accounts.(buildBotFlagIndexRepository)
 	if !ok {
@@ -684,8 +722,12 @@ func (s *Service) RebuildBuildBotFlagIndex(ctx context.Context) error {
 		}
 		updates := make([]repository.BuildBotFlagSourceUpdate, 0)
 		for _, value := range values {
+			provider := value.Provider
+			if provider == "" {
+				provider = accountdomain.ProviderBuild
+			}
 			credential := accountdomain.Credential{
-				ID: value.AccountID, Provider: accountdomain.ProviderBuild, EncryptedAccessToken: value.EncryptedAccessToken,
+				ID: value.AccountID, Provider: provider, EncryptedAccessToken: value.EncryptedAccessToken,
 			}
 			metadata := s.credentialMetadata(credential)
 			if !metadata.BuildBotFlagInspected {
@@ -697,8 +739,15 @@ func (s *Service) RebuildBuildBotFlagIndex(ctx context.Context) error {
 			}
 			if source != value.StoredSource {
 				updates = append(updates, repository.BuildBotFlagSourceUpdate{
-					AccountID: value.AccountID, ExpectedEncryptedAccessToken: value.EncryptedAccessToken, Source: source,
+					AccountID: value.AccountID, Provider: provider, ExpectedEncryptedAccessToken: value.EncryptedAccessToken, Source: source,
 				})
+			}
+			if source == 1 || source == 2 {
+				peerUpdates, peerErr := s.linkedBotRiskPeerUpdates(ctx, indexed, value.AccountID, source)
+				if peerErr != nil {
+					return peerErr
+				}
+				updates = append(updates, peerUpdates...)
 			}
 		}
 		if err := indexed.UpdateBuildBotFlagSources(ctx, updates); err != nil {
@@ -712,9 +761,54 @@ func (s *Service) RebuildBuildBotFlagIndex(ctx context.Context) error {
 	}
 }
 
+func (s *Service) linkedBotRiskPeerUpdates(ctx context.Context, indexed buildBotFlagIndexRepository, accountID uint64, source int) ([]repository.BuildBotFlagSourceUpdate, error) {
+	if source != 1 && source != 2 {
+		return nil, nil
+	}
+	peerIDs, err := indexed.ListLinkedBotRiskPeerIDs(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	updates := make([]repository.BuildBotFlagSourceUpdate, 0, len(peerIDs))
+	for _, peerID := range peerIDs {
+		peer, getErr := s.accounts.Get(ctx, peerID)
+		if getErr != nil {
+			continue
+		}
+		if peer.BuildBotFlagSource == 1 || peer.BuildBotFlagSource == 2 {
+			continue
+		}
+		updates = append(updates, repository.BuildBotFlagSourceUpdate{
+			AccountID: peerID, Provider: peer.Provider, Source: source,
+		})
+	}
+	return updates, nil
+}
+
+// propagateBotRiskToLinkedPeers marks linked Build/Web/Console peers when source is 1 or 2.
+func (s *Service) propagateBotRiskToLinkedPeers(ctx context.Context, accountID uint64, source int) {
+	if source != 1 && source != 2 {
+		return
+	}
+	indexed, ok := s.accounts.(buildBotFlagIndexRepository)
+	if !ok {
+		return
+	}
+	updates, err := s.linkedBotRiskPeerUpdates(ctx, indexed, accountID, source)
+	if err != nil || len(updates) == 0 {
+		return
+	}
+	_ = indexed.UpdateBuildBotFlagSources(ctx, updates)
+	s.invalidateBuildBotFlagCache()
+}
+
 func (s *Service) invalidateBuildBotFlagCache() {
-	if s.buildBotFlagCache != nil {
-		s.buildBotFlagCache.Delete(buildBotFlagCacheKey)
+	if s.buildBotFlagCache == nil {
+		return
+	}
+	s.buildBotFlagCache.Delete(buildBotFlagCacheKey)
+	for _, provider := range []accountdomain.Provider{accountdomain.ProviderBuild, accountdomain.ProviderWeb, accountdomain.ProviderConsole} {
+		s.buildBotFlagCache.Delete(buildBotFlagCacheKey + ":" + string(provider))
 	}
 }
 
@@ -1451,9 +1545,14 @@ func (s *Service) persistImportedSeeds(ctx context.Context, seeds []provider.Cre
 		if err != nil {
 			return ImportResult{}, err
 		}
-		for _, value := range stored {
+		for index, value := range stored {
 			result.AccountIDs = append(result.AccountIDs, value.ID)
 			s.reconcileProviderLinksBestEffort(ctx, value.ID)
+			source := 0
+			if index < len(values) {
+				source = values[index].BuildBotFlagSource
+			}
+			s.propagateBotRiskToLinkedPeers(ctx, value.ID, source)
 			if observer != nil {
 				if err := observer(value.ID); err != nil {
 					return ImportResult{}, err
@@ -2345,6 +2444,7 @@ func (s *Service) ensureCredential(ctx context.Context, value accountdomain.Cred
 			return nil, err
 		}
 		s.invalidateBuildBotFlagCache()
+		s.propagateBotRiskToLinkedPeers(ctx, latest.ID, botFlagSource)
 		s.markRefreshSuccess(latest.ID, currentTime)
 		s.WakeCredentialRefresh()
 		return updated, nil
@@ -4152,6 +4252,8 @@ func (s *Service) persistSeed(ctx context.Context, seed provider.CredentialSeed)
 	stored, created, err := s.accounts.UpsertByIdentity(ctx, value)
 	if err == nil {
 		s.invalidateBuildBotFlagCache()
+		s.reconcileProviderLinksBestEffort(ctx, stored.ID)
+		s.propagateBotRiskToLinkedPeers(ctx, stored.ID, stored.BuildBotFlagSource)
 		s.WakeCredentialRefresh()
 	}
 	return stored, created, err

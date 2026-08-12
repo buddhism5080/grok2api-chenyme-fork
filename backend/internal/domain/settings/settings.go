@@ -137,9 +137,12 @@ type AccountsConfig struct {
 	MarkBuildForbiddenReauth bool
 	// BuildForbiddenReauthCodes contains exact upstream error codes that opt into account invalidation.
 	BuildForbiddenReauthCodes []string
-	// ExcludeBuildBotFlaggedFromScheduling 为 true 时，bot_flag_source/botflagsource/bfs∈{1,2} 的 Build 账号不参与调度。
-	// 仅影响 ProviderBuild 选号；关联 Web/Console 账号调度不受影响。
+	// ExcludeBuildBotFlaggedFromScheduling 为 true 时，风控 Build 账号不参与 Build 调度。
 	ExcludeBuildBotFlaggedFromScheduling bool
+	// ExcludeWebBotFlaggedFromScheduling 为 true 时，风控 Web 账号不参与 Web 调度。
+	ExcludeWebBotFlaggedFromScheduling bool
+	// ExcludeConsoleBotFlaggedFromScheduling 为 true 时，风控 Console 账号不参与 Console 调度。
+	ExcludeConsoleBotFlaggedFromScheduling bool
 	// AutoCleanReauthEnabled 为 true 时，周期性删除已标记 reauthRequired 且超过 minAge 的账号。
 	AutoCleanReauthEnabled bool
 	// AutoCleanReauthInterval 自动清理扫描间隔。
