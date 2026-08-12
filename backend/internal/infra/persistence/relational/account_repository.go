@@ -343,8 +343,11 @@ func (r *AccountRepository) UpdateBuildBotFlagSources(ctx context.Context, value
 	return err
 }
 
-// ListLinkedBotRiskPeerIDs returns one-hop and two-hop linked account IDs for bot-risk
-// propagation: Web↔Build, Web↔Console, and Build↔Console via a shared Web hub.
+// ListLinkedBotRiskPeerIDs returns linked account IDs that should inherit a Web/Console
+// bot-risk mark. Propagation is one-way from SSO channels only:
+//   - Web hit   → linked Build + Console
+//   - Console hit → linked Web + Build (via the shared Web hub)
+// Build hits never propagate outward.
 func (r *AccountRepository) ListLinkedBotRiskPeerIDs(ctx context.Context, accountID uint64) ([]uint64, error) {
 	if accountID == 0 {
 		return nil, nil
@@ -374,21 +377,6 @@ func (r *AccountRepository) ListLinkedBotRiskPeerIDs(ctx context.Context, accoun
 		for _, id := range consoleIDs {
 			add(id)
 		}
-	case account.ProviderBuild:
-		var webIDs []uint64
-		if err := r.db.db.WithContext(ctx).Table("account_provider_links").Where("build_account_id = ?", accountID).Pluck("web_account_id", &webIDs).Error; err != nil {
-			return nil, err
-		}
-		for _, webID := range webIDs {
-			add(webID)
-			var consoleIDs []uint64
-			if err := r.db.db.WithContext(ctx).Table("web_console_account_links").Where("web_account_id = ?", webID).Pluck("console_account_id", &consoleIDs).Error; err != nil {
-				return nil, err
-			}
-			for _, id := range consoleIDs {
-				add(id)
-			}
-		}
 	case account.ProviderConsole:
 		var webIDs []uint64
 		if err := r.db.db.WithContext(ctx).Table("web_console_account_links").Where("console_account_id = ?", accountID).Pluck("web_account_id", &webIDs).Error; err != nil {
@@ -404,6 +392,9 @@ func (r *AccountRepository) ListLinkedBotRiskPeerIDs(ctx context.Context, accoun
 				add(id)
 			}
 		}
+	default:
+		// Build (and unknown providers) keep local marks only.
+		return nil, nil
 	}
 	result := make([]uint64, 0, len(ids))
 	for id := range ids {

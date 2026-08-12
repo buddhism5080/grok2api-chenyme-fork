@@ -706,8 +706,8 @@ func (s *Service) loadBotFlaggedAccountIDs(ctx context.Context, provider account
 }
 
 // RebuildBuildBotFlagIndex backfills persisted non-sensitive routing metadata
-// for Build/Web/Console before the gateway begins serving traffic. Linked peers
-// inherit a positive risk mark when any side is flagged.
+// for Build/Web/Console before the gateway begins serving traffic.
+// Only Web/Console positive marks propagate to linked peers; Build marks stay local.
 func (s *Service) RebuildBuildBotFlagIndex(ctx context.Context) error {
 	indexed, ok := s.accounts.(buildBotFlagIndexRepository)
 	if !ok {
@@ -742,7 +742,7 @@ func (s *Service) RebuildBuildBotFlagIndex(ctx context.Context) error {
 					AccountID: value.AccountID, Provider: provider, ExpectedEncryptedAccessToken: value.EncryptedAccessToken, Source: source,
 				})
 			}
-			if source == 1 || source == 2 {
+			if (source == 1 || source == 2) && (provider == accountdomain.ProviderWeb || provider == accountdomain.ProviderConsole) {
 				peerUpdates, peerErr := s.linkedBotRiskPeerUpdates(ctx, indexed, value.AccountID, source)
 				if peerErr != nil {
 					return peerErr
@@ -785,7 +785,8 @@ func (s *Service) linkedBotRiskPeerUpdates(ctx context.Context, indexed buildBot
 	return updates, nil
 }
 
-// propagateBotRiskToLinkedPeers marks linked Build/Web/Console peers when source is 1 or 2.
+// propagateBotRiskToLinkedPeers marks linked peers when a Web/Console account is
+// risk-flagged (source 1 or 2). Build hits never fan out.
 func (s *Service) propagateBotRiskToLinkedPeers(ctx context.Context, accountID uint64, source int) {
 	if source != 1 && source != 2 {
 		return

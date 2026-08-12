@@ -216,3 +216,62 @@ func TestInitializeSchemaAddsBuildBotFlagIndexWithoutLosingCredentials(t *testin
 		t.Fatalf("stored credential = %#v, err=%v", stored, err)
 	}
 }
+
+func TestListLinkedBotRiskPeerIDsOnlyPropagatesFromWebAndConsole(t *testing.T) {
+	ctx := context.Background()
+	repo := NewAccountRepository(openTestDatabase(t))
+
+	web, _, err := repo.UpsertByIdentity(ctx, account.Credential{
+		Provider: account.ProviderWeb, Name: "web", SourceKey: "web-prop",
+		EncryptedAccessToken: "web-token", AuthStatus: account.AuthStatusActive, UserID: "user-prop",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	build, _, err := repo.UpsertByIdentity(ctx, account.Credential{
+		Provider: account.ProviderBuild, Name: "build", SourceKey: "build-prop",
+		EncryptedAccessToken: "build-token", AuthStatus: account.AuthStatusActive, UserID: "user-prop",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	console, _, err := repo.UpsertByIdentity(ctx, account.Credential{
+		Provider: account.ProviderConsole, Name: "console", SourceKey: "console-prop",
+		EncryptedAccessToken: "console-token", AuthStatus: account.AuthStatusActive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.LinkWebToBuild(ctx, web.ID, build.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.db.WithContext(ctx).Create(&webConsoleAccountLinkModel{
+		WebAccountID: web.ID, ConsoleAccountID: console.ID, CreatedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	buildPeers, err := repo.ListLinkedBotRiskPeerIDs(ctx, build.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(buildPeers) != 0 {
+		t.Fatalf("build hit must not propagate, peers=%v", buildPeers)
+	}
+
+	webPeers, err := repo.ListLinkedBotRiskPeerIDs(ctx, web.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(webPeers, build.ID) || !slices.Contains(webPeers, console.ID) || len(webPeers) != 2 {
+		t.Fatalf("web peers = %v, want build+console", webPeers)
+	}
+
+	consolePeers, err := repo.ListLinkedBotRiskPeerIDs(ctx, console.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(consolePeers, web.ID) || !slices.Contains(consolePeers, build.ID) || len(consolePeers) != 2 {
+		t.Fatalf("console peers = %v, want web+build", consolePeers)
+	}
+}
