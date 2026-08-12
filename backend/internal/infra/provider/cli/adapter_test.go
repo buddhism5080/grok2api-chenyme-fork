@@ -88,24 +88,34 @@ func TestCredentialMetadataMarksNumericBotFlagOneOrTwo(t *testing.T) {
 	}{
 		{name: "numeric one", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": 1}, wantFlag: true, wantSource: 1},
 		{name: "bfs numeric one", provider: account.ProviderBuild, claims: map[string]any{"bfs": 1}, wantFlag: true, wantSource: 1},
+		{name: "botflagsource numeric one", provider: account.ProviderBuild, claims: map[string]any{"botflagsource": 1}, wantFlag: true, wantSource: 1},
 		{name: "numeric two", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": 2}, wantFlag: true, wantSource: 2},
 		{name: "bfs numeric two", provider: account.ProviderBuild, claims: map[string]any{"bfs": 2}, wantFlag: true, wantSource: 2},
+		{name: "botflagsource numeric two", provider: account.ProviderBuild, claims: map[string]any{"botflagsource": 2}, wantFlag: true, wantSource: 2},
+		{name: "BOTFLAGSOURCE case insensitive", provider: account.ProviderBuild, claims: map[string]any{"BOTFLAGSOURCE": 1}, wantFlag: true, wantSource: 1},
+		{name: "Bot_Flag_Source case insensitive", provider: account.ProviderBuild, claims: map[string]any{"Bot_Flag_Source": 2}, wantFlag: true, wantSource: 2},
+		{name: "BFS case insensitive", provider: account.ProviderBuild, claims: map[string]any{"BFS": 1}, wantFlag: true, wantSource: 1},
 		{name: "bfs preferred when bot_flag_source missing", provider: account.ProviderBuild, claims: map[string]any{"bfs": 1, "sub": "user"}, wantFlag: true, wantSource: 1},
+		{name: "botflagsource preferred when bot_flag_source missing", provider: account.ProviderBuild, claims: map[string]any{"botflagsource": 2, "bfs": 1}, wantFlag: true, wantSource: 2},
 		{name: "either claim one is enough", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": 0, "bfs": 1}, wantFlag: true, wantSource: 1},
-		{name: "bot_flag_source preferred over bfs", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": 1, "bfs": 2}, wantFlag: true, wantSource: 1},
+		{name: "bot_flag_source preferred over botflagsource and bfs", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": 1, "botflagsource": 2, "bfs": 2}, wantFlag: true, wantSource: 1},
 		{name: "bot_flag_source two preferred over bfs one", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": 2, "bfs": 1}, wantFlag: true, wantSource: 2},
 		{name: "numeric zero", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": 0}},
 		{name: "bfs numeric zero", provider: account.ProviderBuild, claims: map[string]any{"bfs": 0}},
+		{name: "botflagsource numeric zero", provider: account.ProviderBuild, claims: map[string]any{"botflagsource": 0}},
 		{name: "numeric three", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": 3}},
 		{name: "fractional one", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": 1.5}},
 		{name: "bfs fractional two", provider: account.ProviderBuild, claims: map[string]any{"bfs": 2.5}},
+		{name: "botflagsource fractional two", provider: account.ProviderBuild, claims: map[string]any{"botflagsource": 2.5}},
 		{name: "string one", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": "1"}},
 		{name: "bfs string one", provider: account.ProviderBuild, claims: map[string]any{"bfs": "1"}},
+		{name: "botflagsource string one", provider: account.ProviderBuild, claims: map[string]any{"botflagsource": "1"}},
 		{name: "string two", provider: account.ProviderBuild, claims: map[string]any{"bot_flag_source": "2"}},
 		{name: "missing claim", provider: account.ProviderBuild, claims: map[string]any{"sub": "user"}},
 		{name: "malformed jwt", provider: account.ProviderBuild, token: "not-a-jwt"},
 		{name: "non build", provider: account.ProviderWeb, claims: map[string]any{"bot_flag_source": 1}},
 		{name: "non build bfs two", provider: account.ProviderWeb, claims: map[string]any{"bfs": 2}},
+		{name: "non build botflagsource two", provider: account.ProviderWeb, claims: map[string]any{"botflagsource": 2}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -145,13 +155,25 @@ func TestBuildBotFlagSourceFromClaims(t *testing.T) {
 	if source := buildBotFlagSourceFromClaims(map[string]any{"bfs": float64(1)}); source != 1 {
 		t.Fatalf("bfs=1 source = %d", source)
 	}
+	if source := buildBotFlagSourceFromClaims(map[string]any{"botflagsource": float64(2)}); source != 2 {
+		t.Fatalf("botflagsource=2 source = %d", source)
+	}
+	if source := buildBotFlagSourceFromClaims(map[string]any{"BOTFLAGSOURCE": float64(1)}); source != 1 {
+		t.Fatalf("BOTFLAGSOURCE=1 source = %d", source)
+	}
 	if source := buildBotFlagSourceFromClaims(map[string]any{"bot_flag_source": float64(2)}); source != 2 {
 		t.Fatalf("bot_flag_source=2 source = %d", source)
+	}
+	if source := buildBotFlagSourceFromClaims(map[string]any{"Bot_Flag_Source": float64(1), "bfs": float64(2)}); source != 1 {
+		t.Fatalf("case-insensitive bot_flag_source preferred source = %d", source)
+	}
+	if source := buildBotFlagSourceFromClaims(map[string]any{"botflagsource": float64(1), "bfs": float64(2)}); source != 1 {
+		t.Fatalf("botflagsource preferred over bfs source = %d", source)
 	}
 	if !buildBotFlaggedFromClaims(map[string]any{"bfs": float64(2)}) {
 		t.Fatal("bfs=2 must flag")
 	}
-	if buildBotFlaggedFromClaims(map[string]any{"bfs": "1", "bot_flag_source": "2"}) {
+	if buildBotFlaggedFromClaims(map[string]any{"bfs": "1", "bot_flag_source": "2", "botflagsource": "1"}) {
 		t.Fatal("string values must not flag")
 	}
 }

@@ -99,8 +99,9 @@ func (a *Adapter) SetReasoningReplay(replay *reasoningreplay.ReasoningReplay) {
 func (a *Adapter) Provider() account.Provider { return account.ProviderBuild }
 
 // CredentialMetadata extracts only non-sensitive risk flags from a Build access token.
-// bot_flag_source or its short alias bfs must be JSON number 1 or 2; other values, malformed
-// tokens, and decryption failures are not marked. bot_flag_source is preferred when both are set.
+// bot_flag_source or aliases botflagsource/bfs must be JSON number 1 or 2; claim keys are
+// matched case-insensitively. Other values, malformed tokens, and decryption failures are
+// not marked. Preference when multiple risk claims are set: bot_flag_source, botflagsource, bfs.
 func (a *Adapter) CredentialMetadata(credential account.Credential) provider.CredentialMetadata {
 	if credential.Provider != account.ProviderBuild || a.cipher == nil || credential.EncryptedAccessToken == "" {
 		return provider.CredentialMetadata{}
@@ -122,29 +123,50 @@ func (a *Adapter) CredentialMetadata(credential account.Credential) provider.Cre
 }
 
 // buildBotFlagSourceFromClaims returns the bot-risk source from JWT claims.
-// Accepts bot_flag_source or bfs; only JSON numbers 1 and 2 count (string "1"/"2" do not).
-// Prefer bot_flag_source when it is 1 or 2; otherwise fall back to bfs.
+// Accepts bot_flag_source, botflagsource, or bfs (case-insensitive keys); only JSON numbers
+// 1 and 2 count (string "1"/"2" do not). Preference order: bot_flag_source, botflagsource, bfs.
 func buildBotFlagSourceFromClaims(claims map[string]any) int {
 	if claims == nil {
 		return 0
 	}
-	if source := botFlagSourceClaim(claims, "bot_flag_source"); source != 0 {
-		return source
+	for _, key := range []string{"bot_flag_source", "botflagsource", "bfs"} {
+		if source := botFlagSourceClaim(claims, key); source != 0 {
+			return source
+		}
 	}
-	return botFlagSourceClaim(claims, "bfs")
+	return 0
 }
 
 func botFlagSourceClaim(claims map[string]any, key string) int {
-	value, ok := claims[key].(float64)
+	value, ok := claimValueCaseInsensitive(claims, key)
 	if !ok {
 		return 0
 	}
-	switch value {
+	number, ok := value.(float64)
+	if !ok {
+		return 0
+	}
+	switch number {
 	case 1, 2:
-		return int(value)
+		return int(number)
 	default:
 		return 0
 	}
+}
+
+// claimValueCaseInsensitive returns the first claim value whose key matches target
+// case-insensitively. Exact match is preferred when present.
+func claimValueCaseInsensitive(claims map[string]any, key string) (any, bool) {
+	if value, ok := claims[key]; ok {
+		return value, true
+	}
+	target := strings.ToLower(key)
+	for candidate, value := range claims {
+		if strings.ToLower(candidate) == target {
+			return value, true
+		}
+	}
+	return nil, false
 }
 
 // buildBotFlaggedFromClaims reports whether JWT claims mark a Build account as bot-risked.
@@ -286,7 +308,7 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 		}
 		return a.forwardGatewayCompaction(ctx, request, accessToken, body, warnings)
 	}
-	// Explicit mode wins; in auto mode only confirmed Super accounts with bot_flag_source/bfs in {1,2} default to XAI.
+	// Explicit mode wins; in auto mode only confirmed Super accounts with bot_flag_source/botflagsource/bfs in {1,2} default to XAI.
 	primaryBase := a.primaryBaseURL()
 	base := a.inferenceBaseForOperation(request.Credential, request.Billing, request.Method, request.Path)
 	// Cache affinity and reasoning replay use separate identities. Replay is also bound to the actual account and upstream plane,

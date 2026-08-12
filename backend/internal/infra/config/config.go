@@ -276,7 +276,7 @@ type ClientKeyDefaultsConfig struct {
 type AccountsConfig struct {
 	MarkBuildForbiddenReauth  bool
 	BuildForbiddenReauthCodes []string
-	// ExcludeBuildBotFlaggedFromScheduling removes Build accounts with bot_flag_source/bfs in {1,2}
+	// ExcludeBuildBotFlaggedFromScheduling removes Build accounts with bot_flag_source/botflagsource/bfs in {1,2}
 	// from scheduling only. Linked Web/Console accounts are unaffected.
 	ExcludeBuildBotFlaggedFromScheduling bool
 	AutoCleanReauthEnabled               bool

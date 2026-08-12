@@ -354,7 +354,7 @@ type CredentialMetadata struct {
 	BuildBotFlagInspected bool
 	// BuildBotFlagged is true when BuildBotFlagSource is 1 or 2.
 	BuildBotFlagged bool
-	// BuildBotFlagSource is the numeric bot_flag_source/bfs claim (1 or 2), or 0 when unset.
+	// BuildBotFlagSource is the numeric bot_flag_source/botflagsource/bfs claim (1 or 2), or 0 when unset.
 	BuildBotFlagSource int
 }
 
