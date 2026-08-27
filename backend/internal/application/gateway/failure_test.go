@@ -40,7 +40,7 @@ func TestTransportUpstreamFailureClassifiesEmptyResponse(t *testing.T) {
 
 func TestTransportUpstreamFailureClassifiesFirstCharTimeout(t *testing.T) {
 	failure := newTransportUpstreamFailure(neterror.ErrUpstreamFirstCharTimeout, 42, "build")
-	if failure.HTTPStatus != http.StatusGatewayTimeout || failure.Code != "upstream_first_char_timeout" || failure.PublicMessage != "等待上游首字超时" || failure.AccountScoped {
+	if failure.HTTPStatus != http.StatusGatewayTimeout || failure.Code != "upstream_first_char_timeout" || failure.PublicMessage != "等待上游首字超时" || !failure.AccountScoped {
 		t.Fatalf("failure = %#v", failure)
 	}
 	// First-char timeout is retryable for Build (unlike response-header timeout).
@@ -241,6 +241,20 @@ func TestNonAccountFailureFingerprintStopsAtLimit(t *testing.T) {
 	}
 	if idleFingerprints[idle.Fingerprint] != streamIdleFailureFingerprintLimit {
 		t.Fatalf("idle fingerprint count = %d", idleFingerprints[idle.Fingerprint])
+	}
+
+	firstCharFingerprints := map[string]int{}
+	firstChar := newTransportUpstreamFailure(neterror.ErrUpstreamFirstCharTimeout, 42, "build")
+	if !firstChar.AccountScoped {
+		t.Fatal("first-char timeout must be account-scoped")
+	}
+	for i := 0; i < nonAccountFailureFingerprintLimit+5; i++ {
+		if shouldStopForNonAccountFingerprint(firstCharFingerprints, firstChar) {
+			t.Fatalf("account-scoped first-char timeout stopped credential traversal at iteration %d", i)
+		}
+	}
+	if len(firstCharFingerprints) != 0 {
+		t.Fatalf("account-scoped first-char timeout should not count fingerprints: %#v", firstCharFingerprints)
 	}
 }
 

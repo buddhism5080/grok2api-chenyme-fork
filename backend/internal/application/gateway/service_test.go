@@ -594,6 +594,90 @@ func TestGatewayBuildResponseHeaderTimeoutDoesNotSwitchAccounts(t *testing.T) {
 	}
 }
 
+func TestGatewayFirstCharTimeoutFollowsRoutingMaxAttempts(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "gateway-first-char-max-attempts.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accountRepo := relational.NewAccountRepository(database)
+	modelRepo := relational.NewModelRepository(database)
+	auditRepo := relational.NewAuditRepository(database)
+	responseRepo := relational.NewResponseRepository(database)
+	const maxAttempts = 3
+	credentials := make([]account.Credential, 0, 4)
+	for index := range 4 {
+		name := fmt.Sprintf("first-char-%d", index+1)
+		credential, _, createErr := accountRepo.UpsertByIdentity(ctx, account.Credential{
+			Provider: account.ProviderBuild, Name: name, SourceKey: name, EncryptedAccessToken: "encrypted-" + name,
+			ExpiresAt: time.Now().Add(time.Hour), Enabled: true, AuthStatus: account.AuthStatusActive,
+			Priority: 400 - index*100, MaxConcurrent: 1,
+		})
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		credentials = append(credentials, credential)
+	}
+	const model = "grok-first-char-max-attempts"
+	if err := modelRepo.UpsertDiscovered(ctx, account.ProviderBuild, []string{model}); err != nil {
+		t.Fatal(err)
+	}
+	for _, credential := range credentials {
+		if err := modelRepo.ReplaceAccountCapabilities(ctx, credential.ID, []string{model}, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	adapter := &failoverAdapter{stallBody: true}
+	registry := provider.NewRegistry(adapter)
+	sticky := memory.NewStickyStore()
+	accountService := accountapp.NewService(accountRepo, auditRepo, memory.NewDeviceSessionStore(), sticky, registry, testCipher(t), nil)
+	selector := NewSelector(accountRepo, memory.NewConcurrencyLimiter(), sticky, registry, time.Hour, 30*time.Second, 30*time.Minute)
+	service := NewService(modelRepo, auditRepo, accountService, clientkeyapp.NewService(nil, nil, nil, 60, 4, nil), registry, selector, responseRepo, maxAttempts)
+	service.UpdateBuildStreamFirstCharTimeout(40 * time.Millisecond)
+
+	_, err = service.CreateResponse(ctx, Input{
+		RequestID: "req-first-char-max-attempts", ClientKey: clientkey.Key{ID: 1, Name: "build-key"}, PublicModel: model,
+		Body: []byte(`{"model":"grok-first-char-max-attempts","input":"hello","stream":true}`), Streaming: true,
+	})
+	var failure *UpstreamFailure
+	if !errors.As(err, &failure) || failure.Code != "upstream_first_char_timeout" || failure.HTTPStatus != http.StatusGatewayTimeout {
+		t.Fatalf("err = %v, want account-scoped first-char timeout", err)
+	}
+	if len(adapter.attempts) != maxAttempts {
+		t.Fatalf("attempts = %#v, want %d routing attempts", adapter.attempts, maxAttempts)
+	}
+	seen := make(map[uint64]bool, maxAttempts)
+	for _, accountID := range adapter.attempts {
+		if seen[accountID] {
+			t.Fatalf("retried the same account %d: %#v", accountID, adapter.attempts)
+		}
+		seen[accountID] = true
+	}
+	for _, credential := range credentials {
+		latest, getErr := accountRepo.Get(ctx, credential.ID)
+		if getErr != nil {
+			t.Fatal(getErr)
+		}
+		if seen[credential.ID] {
+			if latest.FailureCount != 1 || latest.CooldownUntil == nil || latest.LastError != "upstream status 504" {
+				t.Fatalf("attempted account %d health = %#v", credential.ID, latest)
+			}
+			remaining := time.Until(*latest.CooldownUntil)
+			if remaining < 20*time.Second || remaining > 40*time.Second {
+				t.Fatalf("account %d cooldown = %s, want about 30s", credential.ID, remaining)
+			}
+			continue
+		}
+		if latest.FailureCount != 0 || latest.CooldownUntil != nil {
+			t.Fatalf("unused account %d was penalized: %#v", credential.ID, latest)
+		}
+	}
+}
+
 func TestGatewayNonStreamingEmptyIdleCoolsAccountAndSwitches(t *testing.T) {
 	ctx := context.Background()
 	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "gateway-non-stream-idle.db"))
@@ -2847,6 +2931,7 @@ type failoverAdapter struct {
 	forwardedModels        []string
 	resourceStatus         int
 	transportErrorIDs      map[uint64]error
+	stallBody              bool
 }
 
 type ssoFailureAdapter struct {
@@ -4540,9 +4625,13 @@ func (a *failoverAdapter) ForwardResponse(_ context.Context, request provider.Re
 	a.lastOperation = request.Operation
 	resourceStatus := a.resourceStatus
 	transportErr := a.transportErrorIDs[request.Credential.ID]
+	stallBody := a.stallBody
 	a.mu.Unlock()
 	if transportErr != nil {
 		return nil, transportErr
+	}
+	if stallBody {
+		return &provider.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: newStallReadCloser()}, nil
 	}
 	status, body := http.StatusOK, "ok"
 	header := make(http.Header)
@@ -4722,5 +4811,8 @@ func TestUpstreamResponseErrorHealthPenaltyDistinguishesPartialIdle(t *testing.T
 	}
 	if _, _, ok = upstreamResponseErrorHealthPenalty(context.DeadlineExceeded, 15*time.Minute); ok {
 		t.Fatal("ordinary timeout must not look like a confirmed response-body failure")
+	}
+	if _, _, ok = upstreamResponseErrorHealthPenalty(neterrorpkg.ErrUpstreamFirstCharTimeout, 15*time.Minute); ok {
+		t.Fatal("first-char timeout must use account-scoped MarkFailure, not the idle health penalty")
 	}
 }

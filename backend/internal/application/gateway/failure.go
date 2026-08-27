@@ -177,10 +177,15 @@ func newHTTPUpstreamFailure(status int, body []byte, accountID uint64, accountNa
 func newTransportUpstreamFailure(err error, accountID uint64, accountName string) *UpstreamFailure {
 	code, message := "upstream_network_error", "连接上游服务失败"
 	status := http.StatusBadGateway
+	accountScoped := false
 	if neterrorpkg.IsResponseHeaderTimeout(err) {
 		status, code, message = http.StatusGatewayTimeout, "upstream_header_timeout", "等待上游响应头超时"
 	} else if neterrorpkg.IsUpstreamFirstCharTimeout(err) {
+		// First-char timeout is treated as an account-scoped stall so routing
+		// maxAttempts (not the stream-idle fingerprint cap) governs failover,
+		// and the slow account takes the ordinary failure cooldown.
 		status, code, message = http.StatusGatewayTimeout, "upstream_first_char_timeout", "等待上游首字超时"
+		accountScoped = true
 	} else if neterrorpkg.IsUpstreamStreamIdleTimeout(err) {
 		status, code, message = http.StatusGatewayTimeout, "upstream_stream_idle_timeout", "上游响应长时间无数据"
 	} else if neterrorpkg.IsUpstreamResponseEmpty(err) {
@@ -192,7 +197,7 @@ func newTransportUpstreamFailure(err error, accountID uint64, accountName string
 	}
 	return &UpstreamFailure{
 		HTTPStatus: status, Code: code, PublicMessage: message,
-		AccountID: accountID, AccountName: accountName, Fingerprint: code, Cause: err,
+		AccountID: accountID, AccountName: accountName, AccountScoped: accountScoped, Fingerprint: code, Cause: err,
 	}
 }
 
