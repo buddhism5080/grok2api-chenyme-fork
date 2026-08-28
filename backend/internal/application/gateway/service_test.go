@@ -3934,7 +3934,7 @@ func TestGatewayBarePermissionDeniedRetainsEgressRetryForWebAndConsole(t *testin
 	}
 }
 
-func TestGatewayPreviousResponseIDFailsOverWhenPinnedAccountRateLimited(t *testing.T) {
+func TestGatewayPreviousResponseIDDoesNotCrossAccounts(t *testing.T) {
 	ctx := context.Background()
 	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "prev-response-pin.db"))
 	if err != nil {
@@ -3996,100 +3996,16 @@ func TestGatewayPreviousResponseIDFailsOverWhenPinnedAccountRateLimited(t *testi
 	selector := NewSelector(accountRepo, memory.NewConcurrencyLimiter(), sticky, registry, time.Hour, time.Second, time.Minute)
 	service := NewService(modelRepo, auditRepo, accountService, clientkeyapp.NewService(nil, nil, nil, 60, 4, nil), registry, selector, responseRepo, 3)
 
-	result, err := service.CreateResponse(ctx, Input{
+	_, err = service.CreateResponse(ctx, Input{
 		RequestID: "req-pin", ClientKey: clientKey, PublicModel: "grok-pin",
 		PreviousResponseID: "resp-pin-root",
 		Body:               []byte(`{"model":"grok-pin","previous_response_id":"resp-pin-root","input":"hello"}`),
 	})
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("pinned free-usage exhaustion should fail without cross-account failover")
 	}
-	defer result.Body.Close()
-	result.Finalize(Usage{}, "resp-pin-b", "")
-	if attempts := adapter.Attempts(); len(attempts) != 2 || attempts[0] != credentials[0].ID || attempts[1] != credentials[1].ID {
-		t.Fatalf("pinned 429 should fail over to account B, attempts=%#v", attempts)
-	}
-	if bodies := adapter.Bodies(); len(bodies) != 2 || !strings.Contains(string(bodies[0]), "previous_response_id") || strings.Contains(string(bodies[1]), "previous_response_id") {
-		t.Fatalf("failover body must drop previous_response_id: %s", bodies)
-	}
-}
-
-func TestGatewayPinnedCompaction400FailsOverAndDropsPreviousResponseID(t *testing.T) {
-	ctx := context.Background()
-	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "prev-response-compaction.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	if err := database.InitializeSchema(ctx); err != nil {
-		t.Fatal(err)
-	}
-	accountRepo := relational.NewAccountRepository(database)
-	modelRepo := relational.NewModelRepository(database)
-	auditRepo := relational.NewAuditRepository(database)
-	responseRepo := relational.NewResponseRepository(database)
-	keyRepo := relational.NewClientKeyRepository(database)
-	credentials := make([]account.Credential, 0, 2)
-	for index, name := range []string{"compact-a", "compact-b"} {
-		credential, _, createErr := accountRepo.UpsertByIdentity(ctx, account.Credential{
-			Provider: account.ProviderBuild, Name: name, SourceKey: name, EncryptedAccessToken: name,
-			ExpiresAt: time.Now().Add(time.Hour), Enabled: true, AuthStatus: account.AuthStatusActive,
-			Priority: 200 - index, MaxConcurrent: 1,
-		})
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
-		credentials = append(credentials, credential)
-	}
-	if err := modelRepo.UpsertDiscovered(ctx, account.ProviderBuild, []string{"grok-pin"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, credential := range credentials {
-		if err := modelRepo.ReplaceAccountCapabilities(ctx, credential.ID, []string{"grok-pin"}, time.Now().UTC()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	clientKey, err := keyRepo.Create(ctx, clientkey.Key{
-		Name: "compact-key", Prefix: "compact", SecretHash: strings.Repeat("4", 64), EncryptedSecret: "encrypted",
-		Enabled: true, RPMLimit: 120, MaxConcurrent: 8,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC()
-	if err := responseRepo.Save(ctx, inferencedomain.ResponseOwnership{
-		ResponseID: "resp-compact-root", AccountID: credentials[0].ID, ClientKeyID: clientKey.ID,
-		Provider: account.ProviderBuild, PromptCacheKey: "session-compact", ExpiresAt: now.Add(time.Hour),
-		CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	compaction := `{"error":"Could not decode the compaction blob. Ensure it is unmodified from the compact response."}`
-	adapter := &scriptedBuildAdapter{responses: map[uint64][]scriptedBuildResponse{
-		credentials[0].ID: {{status: http.StatusBadRequest, body: compaction}},
-		credentials[1].ID: {{status: http.StatusOK, body: `{"id":"resp-compact-b"}`}},
-	}}
-	registry := provider.NewRegistry(adapter)
-	sticky := memory.NewStickyStore()
-	accountService := accountapp.NewService(accountRepo, auditRepo, memory.NewDeviceSessionStore(), sticky, registry, testCipher(t), nil)
-	selector := NewSelector(accountRepo, memory.NewConcurrencyLimiter(), sticky, registry, time.Hour, time.Second, time.Minute)
-	service := NewService(modelRepo, auditRepo, accountService, clientkeyapp.NewService(nil, nil, nil, 60, 4, nil), registry, selector, responseRepo, 3)
-
-	result, err := service.CreateResponse(ctx, Input{
-		RequestID: "req-compact", ClientKey: clientKey, PublicModel: "grok-pin",
-		PreviousResponseID: "resp-compact-root",
-		Body:               []byte(`{"model":"grok-pin","previous_response_id":"resp-compact-root","input":[{"type":"reasoning","encrypted_content":"opaque"},{"role":"user","content":"continue"}]}`),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer result.Body.Close()
-	result.Finalize(Usage{}, "resp-compact-b", "")
-	if attempts := adapter.Attempts(); len(attempts) != 2 || attempts[0] != credentials[0].ID || attempts[1] != credentials[1].ID {
-		t.Fatalf("compaction 400 should fail over, attempts=%#v", attempts)
-	}
-	if bodies := adapter.Bodies(); len(bodies) != 2 || strings.Contains(string(bodies[1]), "previous_response_id") {
-		t.Fatalf("failover body must drop previous_response_id: %s", bodies)
+	if attempts := adapter.Attempts(); len(attempts) != 1 || attempts[0] != credentials[0].ID {
+		t.Fatalf("previous_response_id must stay pinned to account A, attempts=%#v", attempts)
 	}
 }
 
@@ -4247,7 +4163,6 @@ func (a *barePermissionEgressAdapter) ForwardResponse(context.Context, provider.
 type scriptedBuildAdapter struct {
 	mu            sync.Mutex
 	attempts      []uint64
-	bodies        [][]byte
 	responses     map[uint64][]scriptedBuildResponse
 	refreshes     atomic.Int64
 	lastRateLimit *provider.RateLimitMetadata
@@ -4264,7 +4179,6 @@ func (a *scriptedBuildAdapter) ForwardResponse(_ context.Context, request provid
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.attempts = append(a.attempts, request.Credential.ID)
-	a.bodies = append(a.bodies, append([]byte(nil), request.Body...))
 	queue := a.responses[request.Credential.ID]
 	if len(queue) == 0 {
 		return &provider.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"resp-default"}`))}, nil
@@ -4293,14 +4207,6 @@ func (a *scriptedBuildAdapter) Attempts() []uint64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return append([]uint64(nil), a.attempts...)
-}
-
-func (a *scriptedBuildAdapter) Bodies() [][]byte {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	out := make([][]byte, len(a.bodies))
-	copy(out, a.bodies)
-	return out
 }
 
 type systemicForbiddenAdapter struct {

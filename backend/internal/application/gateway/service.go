@@ -1018,7 +1018,7 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 	// A lease recovery probe stays on exactly one account and one rendered proxy
 	// identity. Retrying the same pinned account would provide neither failover
 	// nor new evidence and can multiply a slow/failing probe.
-	attemptPolicy := newRequestRoutingAttemptPolicy(int(s.maxAttempts.Load()), input.ForcedAccountID != 0)
+	attemptPolicy := newRequestRoutingAttemptPolicy(int(s.maxAttempts.Load()), ownership != nil || input.ForcedAccountID != 0)
 	idempotencyID, _ := security.NewOpaqueToken(18)
 	pricingModel := s.providers.PricingModel(route.Provider, route.UpstreamModel)
 	if err := s.checkLedgerReady(); err != nil {
@@ -1040,23 +1040,6 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 	quotaMode := s.providers.QuotaMode(route.Provider, route.UpstreamModel)
 	quotaProbeAttempted := false
 	selection := preselectedSession
-	releasedPinnedAccount := false
-	releasePinnedState := func(reason string) {
-		if releasedPinnedAccount {
-			return
-		}
-		releasedPinnedAccount = true
-		if ownership != nil {
-			excluded[ownership.AccountID] = true
-		}
-		input.PreviousResponseID = ""
-		input.Body = stripPreviousResponseID(input.Body)
-		input.PromptCacheKey = ""
-		affinityKey = ""
-		ownershipPromptCacheKey = ""
-		reasoningReplayKey = ""
-		s.logger.Info("pinned_account_failover", "request_id", input.RequestID, "reason", reason, "account_id", ownershipAccountID(ownership))
-	}
 	var lastErr error
 	var lastFailure *UpstreamFailure
 	failureAttempts := newFailureAttemptRecorder(http.MethodPost, path)
@@ -1247,9 +1230,6 @@ attemptLoop:
 		var lease *accountLease
 		var err error
 		selectionStarted := time.Now()
-		if ownership != nil && !releasedPinnedAccount && excluded[ownership.AccountID] {
-			releasePinnedState("pinned_account_excluded")
-		}
 		if input.ForcedAccountID != 0 {
 			if input.ForcedEgressNodeID == 0 {
 				err = &SelectionUnavailableError{Reason: SelectionNoAccounts}
@@ -1264,25 +1244,16 @@ attemptLoop:
 					err = &SelectionUnavailableError{Reason: SelectionNoAccounts}
 				}
 			}
-		} else if ownership != nil && !releasedPinnedAccount {
+		} else if ownership != nil {
 			lease, err = s.selector.AcquirePinnedForKey(ctx, route.Provider, ownership.AccountID, route.ID, route.UpstreamModel, quotaMode, true, accountScope)
-			if err != nil {
-				failureAttempts.captureSelectionFailure(ownership.AccountID, "", err)
-				releasePinnedState(err.Error())
-				lease = nil
-				err = nil
+		} else if input.ForcedEgressNodeID != 0 {
+			lease, err = s.selector.AcquireForKeyOnEgressNode(ctx, route.Provider, route.ID, route.UpstreamModel, quotaMode, affinityKey, excluded, !quotaProbeAttempted, accountScope, input.ForcedEgressNodeID)
+		} else {
+			if selection == nil {
+				selection, err = s.selector.beginSelectionSessionForKey(ctx, route.Provider, route.ID, route.UpstreamModel, quotaMode, affinityKey, excluded, !quotaProbeAttempted, accountScope)
 			}
-		}
-		if lease == nil && err == nil && input.ForcedAccountID == 0 {
-			if input.ForcedEgressNodeID != 0 {
-				lease, err = s.selector.AcquireForKeyOnEgressNode(ctx, route.Provider, route.ID, route.UpstreamModel, quotaMode, affinityKey, excluded, !quotaProbeAttempted, accountScope, input.ForcedEgressNodeID)
-			} else {
-				if selection == nil {
-					selection, err = s.selector.beginSelectionSessionForKey(ctx, route.Provider, route.ID, route.UpstreamModel, quotaMode, affinityKey, excluded, !quotaProbeAttempted, accountScope)
-				}
-				if err == nil {
-					lease, err = selection.Acquire(ctx, excluded, !quotaProbeAttempted)
-				}
+			if err == nil {
+				lease, err = selection.Acquire(ctx, excluded, !quotaProbeAttempted)
 			}
 		}
 		timing.markSelection(time.Since(selectionStarted))
@@ -1309,11 +1280,11 @@ attemptLoop:
 			}
 			lastErr = fmt.Errorf("上游 Team 与模型请求频率受限")
 			s.logger.Warn("upstream_team_model_rate_limit_active", "request_id", input.RequestID, "account_id", lease.Credential.ID, "provider", route.Provider, "model", route.UpstreamModel, "team_fingerprint", limited.TeamFingerprint, "retry_after", lastFailure.RetryAfter.Round(time.Second))
-			if input.ForcedAccountID != 0 {
+			// Stored Responses are pinned to one account. Return the cached 429
+			// immediately instead of spinning until the cooldown expires or
+			// replaying the request on the same account.
+			if ownership != nil || input.ForcedAccountID != 0 {
 				break attemptLoop
-			}
-			if ownership != nil {
-				releasePinnedState("team_model_rate_limit")
 			}
 			attempt--
 			continue
@@ -1615,25 +1586,7 @@ attemptLoop:
 			if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
 				break
 			}
-			if ownership != nil {
-				releasePinnedState("upstream_retry")
-			}
 			continue
-		}
-		if response.StatusCode == http.StatusBadRequest && attemptPolicy.hasNext(attempt) {
-			body, _ := readRetryableBody(response.Body)
-			if isCompactionDecodeFailureBody(body) {
-				lastFailure = newHTTPUpstreamFailure(response.StatusCode, body, credential.ID, credential.Name)
-				lastFailure.AccountScoped = true
-				lease.Release()
-				lastErr = fmt.Errorf("上游 reasoning 状态无法解码")
-				if ownership != nil {
-					releasePinnedState("reasoning_decode_rejected")
-				}
-				s.logger.Warn("reasoning_decode_failover", "request_id", input.RequestID, "account_id", credential.ID, "provider", credential.Provider)
-				continue
-			}
-			response.Body = io.NopCloser(bytes.NewReader(body))
 		}
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
 			s.selector.markSuccess(ctx, credential, lease.QuotaProbe)
@@ -2226,31 +2179,4 @@ func firstError(values ...error) error {
 		}
 	}
 	return errors.New("未知上游错误")
-}
-
-func ownershipAccountID(ownership *inferencedomain.ResponseOwnership) uint64 {
-	if ownership == nil {
-		return 0
-	}
-	return ownership.AccountID
-}
-
-func stripPreviousResponseID(body []byte) []byte {
-	var payload map[string]any
-	if json.Unmarshal(body, &payload) != nil {
-		return body
-	}
-	if _, ok := payload["previous_response_id"]; !ok {
-		return body
-	}
-	delete(payload, "previous_response_id")
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return body
-	}
-	return encoded
-}
-
-func isCompactionDecodeFailureBody(body []byte) bool {
-	return bytes.Contains(bytes.ToLower(body), []byte("could not decode the compaction blob"))
 }
