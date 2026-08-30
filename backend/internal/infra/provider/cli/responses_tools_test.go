@@ -279,7 +279,7 @@ func TestNormalizeResponsesRequestRemovesNullableFunctionParameterRoot(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compatibility == nil || !strings.Contains(compatibility.warningHeader(), "function_parameters_nullable_root_normalized") {
+	if compatibility == nil || !strings.Contains(compatibility.warningHeader(), "function_parameters_root_normalized") {
 		t.Fatalf("compatibility = %#v", compatibility)
 	}
 	var payload map[string]any
@@ -328,7 +328,7 @@ func TestNormalizeResponsesRequestRemovesNullableLocalRefFunctionRoot(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compatibility == nil || !strings.Contains(compatibility.warningHeader(), "function_parameters_nullable_root_normalized") {
+	if compatibility == nil || !strings.Contains(compatibility.warningHeader(), "function_parameters_root_normalized") {
 		t.Fatalf("compatibility = %#v", compatibility)
 	}
 	var payload map[string]any

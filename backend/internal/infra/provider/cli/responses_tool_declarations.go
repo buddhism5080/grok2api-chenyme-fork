@@ -179,7 +179,7 @@ func (c *responsesToolCompatibility) normalizeTool(raw any, namespace string, cl
 			if changed {
 				converted["parameters"] = normalized
 				c.changed = true
-				c.addWarning("function_parameters_nullable_root_normalized")
+				c.addWarning("function_parameters_root_normalized")
 			}
 		}
 		identity := responsesToolIdentity{Kind: responsesFunctionTool, Namespace: namespace, Name: name}
