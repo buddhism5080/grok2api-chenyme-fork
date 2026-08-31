@@ -142,10 +142,33 @@ func normalizeAnthropicError(value any) map[string]any {
 			message = text
 		}
 		errorType = normalizeAnthropicErrorType(object)
+		if errorType == "api_error" && isAvailabilityDegraded(message, stringAny(object["code"])) {
+			errorType = "overloaded_error"
+		}
 	} else if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
 		message = text
+		if isAvailabilityDegraded(message, "") {
+			errorType = "overloaded_error"
+		}
 	}
 	return map[string]any{"type": errorType, "message": message}
+}
+
+func isAvailabilityDegraded(message, code string) bool {
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case "service_unavailable", "overloaded", "unavailable", "503":
+		return true
+	}
+	m := strings.ToLower(message)
+	return strings.Contains(m, "temporarily unavailable") ||
+		strings.Contains(m, "currently degraded") ||
+		strings.Contains(m, "overloaded") ||
+		strings.Contains(m, "internal error during token generation")
+}
+
+func stringAny(value any) string {
+	text, _ := value.(string)
+	return text
 }
 
 func normalizeAnthropicErrorType(object map[string]any) string {

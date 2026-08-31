@@ -18,6 +18,8 @@ type responsesCompatState struct {
 	usedItemIDs     map[string]struct{}
 	pending         []byte
 	passingLongLine bool
+	// passthroughNativeErrors keeps xAI/Grok error events unchanged (Grok UA).
+	passthroughNativeErrors bool
 }
 
 func rewriteResponsesStreamChunk(chunk []byte, state *responsesCompatState) []byte {
@@ -82,6 +84,7 @@ func flushResponsesStreamTail(state *responsesCompatState) []byte {
 		return nil
 	}
 	sanitizeResponsesEvent(event, state)
+	rewriteAvailabilityErrorEvent(event, state)
 	encoded, err := json.Marshal(event)
 	if err != nil {
 		return nil
@@ -123,6 +126,9 @@ func rewriteResponsesDataLine(line []byte, state *responsesCompatState) []byte {
 		return line
 	}
 	changed := sanitizeResponsesEvent(event, state)
+	if rewriteAvailabilityErrorEvent(event, state) {
+		changed = true
+	}
 	if !changed {
 		return line
 	}
@@ -326,6 +332,38 @@ func responsesEventNeedsItemID(eventType string) bool {
 	default:
 		return false
 	}
+}
+
+func rewriteAvailabilityErrorEvent(event map[string]any, state *responsesCompatState) bool {
+	if state == nil || state.passthroughNativeErrors || stringAny(event["type"]) != "error" {
+		return false
+	}
+	message := stringAny(event["message"])
+	code := stringAny(event["code"])
+	if !isAvailabilityDegraded(message, code) {
+		return false
+	}
+	if code == "server_error" {
+		return false
+	}
+	event["code"] = "server_error"
+	return true
+}
+
+func isAvailabilityDegraded(message, code string) bool {
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case "service_unavailable", "overloaded", "unavailable", "503":
+		return true
+	}
+	m := strings.ToLower(message)
+	return strings.Contains(m, "temporarily unavailable") ||
+		strings.Contains(m, "currently degraded") ||
+		strings.Contains(m, "overloaded") ||
+		strings.Contains(m, "internal error during token generation")
+}
+
+func isGrokUserAgent(ua string) bool {
+	return strings.Contains(strings.ToLower(ua), "grok")
 }
 
 func stringAny(value any) string {
