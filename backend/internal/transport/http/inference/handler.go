@@ -1298,7 +1298,7 @@ func (h *Handler) writeProtocolResult(c *gin.Context, result *gateway.Result, st
 	}
 	var err error
 	if stream {
-		metadata, copyErr := copyStreamWithFallbackModel(c.Writer, result.Body, protocol, result.MarkFirstToken, fallbackModel)
+		metadata, copyErr := copyStreamWithFallbackModel(c.Writer, result.Body, protocol, result.MarkFirstToken, fallbackModel, c.Request.UserAgent())
 		usage, responseID, err = metadata.Usage, metadata.ResponseID, copyErr
 		if metadata.StreamFailure != nil && result.RecordStreamFailure != nil {
 			result.RecordStreamFailure(*metadata.StreamFailure)
@@ -1315,6 +1315,11 @@ func (h *Handler) writeProtocolResult(c *gin.Context, result *gateway.Result, st
 func classifyCopyError(ctx context.Context, err error) string {
 	if err == nil {
 		return ""
+	}
+	// An upstream SSE error/failed event is the cause even if the client
+	// hangs up immediately after seeing it (Claude Code /goal abort).
+	if errors.Is(err, errUpstreamStreamFailed) {
+		return "upstream_stream_error"
 	}
 	if neterror.IsClientRequestCancel(ctx, err) {
 		return "client_stream_interrupted"
@@ -1335,6 +1340,16 @@ func classifyCopyError(ctx context.Context, err error) string {
 	default:
 		return "stream_interrupted"
 	}
+}
+
+func preferUpstreamStreamFailed(inspector *responseInspector, err error) error {
+	if err == nil {
+		return nil
+	}
+	if terminal := inspector.TerminalError(); errors.Is(terminal, errUpstreamStreamFailed) {
+		return terminal
+	}
+	return err
 }
 
 // peekNonEmptyJSONBody delays the downstream 2xx status until the upstream has
@@ -1362,14 +1377,15 @@ type responseMetadata struct {
 }
 
 func copyStream(writer gin.ResponseWriter, source io.Reader, protocol streamProtocol, onFirstToken func()) (responseMetadata, error) {
-	return copyStreamWithFallbackModel(writer, source, protocol, onFirstToken, "")
+	return copyStreamWithFallbackModel(writer, source, protocol, onFirstToken, "", "")
 }
 
-func copyStreamWithFallbackModel(writer gin.ResponseWriter, source io.Reader, protocol streamProtocol, onFirstToken func(), fallbackModel string) (responseMetadata, error) {
+func copyStreamWithFallbackModel(writer gin.ResponseWriter, source io.Reader, protocol streamProtocol, onFirstToken func(), fallbackModel, userAgent string) (responseMetadata, error) {
 	inspector := &responseInspector{protocol: protocol, onFirstToken: onFirstToken}
 	markerFilter := internalSSEMarkerFilter{enabled: protocol == streamProtocolChat || protocol == streamProtocolAnthropic}
 	var compat responsesCompatState
 	compat.model = strings.TrimSpace(fallbackModel)
+	compat.passthroughNativeErrors = isGrokUserAgent(userAgent)
 	buffer := make([]byte, responseCopyBufferBytes)
 	received := 0
 	transferred := 0
@@ -1401,10 +1417,10 @@ func copyStreamWithFallbackModel(writer gin.ResponseWriter, source io.Reader, pr
 			}
 			if len(chunk) > 0 {
 				if err := setResponseWriteDeadline(writer); err != nil {
-					return inspector.Metadata(), err
+					return inspector.Metadata(), preferUpstreamStreamFailed(inspector, err)
 				}
 				if _, err := writer.Write(chunk); err != nil {
-					return inspector.Metadata(), err
+					return inspector.Metadata(), preferUpstreamStreamFailed(inspector, err)
 				}
 				writer.Flush()
 				transferred += len(chunk)
@@ -1417,10 +1433,10 @@ func copyStreamWithFallbackModel(writer gin.ResponseWriter, source io.Reader, pr
 					return inspector.Metadata(), fmt.Errorf("%w: 流式响应超过 %d MiB", errResponseTransferLimit, maxStreamResponseTransferBytes>>20)
 				}
 				if err := setResponseWriteDeadline(writer); err != nil {
-					return inspector.Metadata(), err
+					return inspector.Metadata(), preferUpstreamStreamFailed(inspector, err)
 				}
 				if _, err := writer.Write(tail); err != nil {
-					return inspector.Metadata(), err
+					return inspector.Metadata(), preferUpstreamStreamFailed(inspector, err)
 				}
 				writer.Flush()
 				transferred += len(tail)
@@ -1432,10 +1448,10 @@ func copyStreamWithFallbackModel(writer gin.ResponseWriter, source io.Reader, pr
 						return inspector.Metadata(), fmt.Errorf("%w: 流式响应超过 %d MiB", errResponseTransferLimit, maxStreamResponseTransferBytes>>20)
 					}
 					if err := setResponseWriteDeadline(writer); err != nil {
-						return inspector.Metadata(), err
+						return inspector.Metadata(), preferUpstreamStreamFailed(inspector, err)
 					}
 					if _, err := writer.Write(tail); err != nil {
-						return inspector.Metadata(), err
+						return inspector.Metadata(), preferUpstreamStreamFailed(inspector, err)
 					}
 					writer.Flush()
 					transferred += len(tail)

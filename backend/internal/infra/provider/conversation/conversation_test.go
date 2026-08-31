@@ -825,6 +825,8 @@ func TestConvertResponsesJSONToMessagesNormalizesErrorType(t *testing.T) {
 		{name: "map upstream code", body: `{"error":{"message":"limited","code":"rate_limit_exceeded"}}`, want: "rate_limit_error"},
 		{name: "hide private type", body: `{"error":{"message":"failed","type":"private_internal"}}`, want: "api_error"},
 		{name: "preserve string message", body: `{"error":"plain upstream failure"}`, want: "api_error", wantMessage: "plain upstream failure"},
+		{name: "availability degraded message", body: `{"error":{"message":"Service temporarily unavailable. The model's availability is currently degraded."}}`, want: "overloaded_error", wantMessage: "Service temporarily unavailable. The model's availability is currently degraded."},
+		{name: "token generation internal error", body: `{"error":{"message":"Internal error during token generation","type":"api_error"}}`, want: "overloaded_error", wantMessage: "Internal error during token generation"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1229,6 +1231,44 @@ func TestConvertResponsesStreamMessagesNormalizesTerminalError(t *testing.T) {
 	}
 	if strings.Contains(text, "message_stop") {
 		t.Fatalf("failed stream must not emit message_stop: %s", text)
+	}
+}
+
+func TestConvertResponsesStreamAvailabilityDegradedIsOverloaded(t *testing.T) {
+	stream := strings.Join([]string{
+		`event: response.created`,
+		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
+		`event: error`,
+		`data: {"sequence_number":105,"type":"error","code":null,"message":"Service temporarily unavailable. The model's availability is currently degraded.","param":null}`, "", "",
+	}, "\n")
+	converted, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationMessages))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(converted)
+	if !strings.Contains(text, `event: error`) || !strings.Contains(text, `"type":"overloaded_error"`) || !strings.Contains(text, "currently degraded") {
+		t.Fatalf("messages availability error = %s", text)
+	}
+	if strings.Contains(text, `"type":"api_error"`) {
+		t.Fatalf("degraded availability must not stay api_error: %s", text)
+	}
+}
+
+func TestConvertResponsesStreamTokenGenerationErrorIsOverloaded(t *testing.T) {
+	stream := strings.Join([]string{
+		`event: error`,
+		`data: {"sequence_number":71,"type":"error","code":null,"message":"Internal error during token generation","param":null}`, "", "",
+	}, "\n")
+	converted, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationMessages))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(converted)
+	if !strings.Contains(text, `"type":"overloaded_error"`) || !strings.Contains(text, "Internal error during token generation") {
+		t.Fatalf("messages token-generation error = %s", text)
+	}
+	if strings.Contains(text, `"type":"api_error"`) {
+		t.Fatalf("token-generation error must not stay api_error: %s", text)
 	}
 }
 

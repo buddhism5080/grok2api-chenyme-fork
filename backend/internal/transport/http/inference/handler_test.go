@@ -1041,6 +1041,9 @@ func TestClassifyCopyErrorDistinguishesClientFromUpstream(t *testing.T) {
 	if got := classifyCopyError(canceled, readErr); got != "client_stream_interrupted" {
 		t.Fatalf("client abort = %q", got)
 	}
+	if got := classifyCopyError(canceled, errUpstreamStreamFailed); got != "upstream_stream_error" {
+		t.Fatalf("upstream error event during client abort = %q", got)
+	}
 	if got := classifyCopyError(context.Background(), readErr); got != "upstream_stream_interrupted" {
 		t.Fatalf("upstream abort = %q", got)
 	}
@@ -1067,7 +1070,7 @@ func TestCopyStreamWritesTerminalOnIdleTimeout(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			context, _ := gin.CreateTestContext(recorder)
-			_, err := copyStreamWithFallbackModel(context.Writer, &idleErrorReader{}, test.protocol, nil, "grok-test")
+			_, err := copyStreamWithFallbackModel(context.Writer, &idleErrorReader{}, test.protocol, nil, "grok-test", "")
 			if !errors.Is(err, errUpstreamStreamRead) || !errors.Is(err, neterror.ErrUpstreamStreamIdleTimeout) {
 				t.Fatalf("copy error = %v", err)
 			}
@@ -1163,7 +1166,7 @@ func TestCopyStreamWritesTerminalOnIncompleteEOF(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
-	_, err := copyStreamWithFallbackModel(context.Writer, strings.NewReader(""), streamProtocolResponses, nil, "grok-test")
+	_, err := copyStreamWithFallbackModel(context.Writer, strings.NewReader(""), streamProtocolResponses, nil, "grok-test", "")
 	if !errors.Is(err, errUpstreamStreamIncomplete) {
 		t.Fatalf("copy error = %v", err)
 	}
@@ -1189,7 +1192,7 @@ func TestCopyStreamAbortTrailerAlwaysIncludesModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
-	_, err := copyStreamWithFallbackModel(context.Writer, &idleErrorReader{}, streamProtocolResponses, nil, "grok-test")
+	_, err := copyStreamWithFallbackModel(context.Writer, &idleErrorReader{}, streamProtocolResponses, nil, "grok-test", "")
 	if !errors.Is(err, errUpstreamStreamRead) {
 		t.Fatalf("copy error = %v", err)
 	}
@@ -1204,7 +1207,7 @@ func TestCopyStreamAbortTrailerPrefersUpstreamModel(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
 	body := []byte(`data: {"type":"response.created","response":{"id":"resp_real","model":"upstream-model","status":"in_progress"}}` + "\n\n")
-	_, err := copyStreamWithFallbackModel(context.Writer, &chunkErrorReader{data: body}, streamProtocolResponses, nil, "request-model")
+	_, err := copyStreamWithFallbackModel(context.Writer, &chunkErrorReader{data: body}, streamProtocolResponses, nil, "request-model", "")
 	if !errors.Is(err, errUpstreamStreamRead) {
 		t.Fatalf("copy error = %v", err)
 	}
@@ -1580,6 +1583,92 @@ func TestWriteResultClientAbortKeepsUpstreamStatus(t *testing.T) {
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx))
 	if recorder.Code != http.StatusOK || finalCode != "client_stream_interrupted" {
 		t.Fatalf("status=%d finalize=%q body=%q", recorder.Code, finalCode, recorder.Body.String())
+	}
+}
+
+func TestWriteResultUpstreamErrorEventNotClientInterrupt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewHandler(nil, nil, 1<<20)
+	stream := "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"}}\n\n" +
+		"event: error\ndata: {\"type\":\"error\",\"code\":null,\"message\":\"Service temporarily unavailable. The model's availability is currently degraded.\"}\n\n"
+	var finalCode string
+	result := &gateway.Result{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(stream)),
+		Finalize:   func(_ gateway.Usage, _, code string) { finalCode = code },
+	}
+	router := gin.New()
+	router.POST("/", func(c *gin.Context) {
+		handler.writeResult(c, result, true, streamProtocolResponses)
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx))
+	if recorder.Code != http.StatusOK || finalCode != "upstream_stream_error" {
+		t.Fatalf("status=%d finalize=%q body=%q", recorder.Code, finalCode, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "currently degraded") {
+		t.Fatalf("body=%q", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"code":"server_error"`) || strings.Contains(recorder.Body.String(), `"error":{`) {
+		t.Fatalf("openai responses error must be a flat ResponseErrorEvent, body=%q", recorder.Body.String())
+	}
+}
+
+func TestWriteResultGrokUAKeepsNativeAvailabilityError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewHandler(nil, nil, 1<<20)
+	stream := "event: error\ndata: {\"type\":\"error\",\"code\":null,\"message\":\"Service temporarily unavailable. The model's availability is currently degraded.\",\"param\":null,\"sequence_number\":105}\n\n"
+	var finalCode string
+	result := &gateway.Result{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(stream)),
+		Finalize:   func(_ gateway.Usage, _, code string) { finalCode = code },
+	}
+	router := gin.New()
+	router.POST("/", func(c *gin.Context) {
+		handler.writeResult(c, result, true, streamProtocolResponses)
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.Header.Set("User-Agent", "grok-shell/1.0.4 (linux; x86_64)")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK || finalCode != "upstream_stream_error" {
+		t.Fatalf("status=%d finalize=%q body=%q", recorder.Code, finalCode, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"code":null`) || strings.Contains(recorder.Body.String(), `"code":"server_error"`) {
+		t.Fatalf("grok UA must keep native error, body=%q", recorder.Body.String())
+	}
+}
+
+func TestWriteResultTokenGenerationErrorGetsServerError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewHandler(nil, nil, 1<<20)
+	stream := "event: error\ndata: {\"type\":\"error\",\"code\":null,\"message\":\"Internal error during token generation\",\"param\":null,\"sequence_number\":71}\n\n"
+	var finalCode string
+	result := &gateway.Result{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(stream)),
+		Finalize:   func(_ gateway.Usage, _, code string) { finalCode = code },
+	}
+	router := gin.New()
+	router.POST("/", func(c *gin.Context) {
+		handler.writeResult(c, result, true, streamProtocolResponses)
+	})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/", nil))
+	if recorder.Code != http.StatusOK || finalCode != "upstream_stream_error" {
+		t.Fatalf("status=%d finalize=%q body=%q", recorder.Code, finalCode, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"code":"server_error"`) || !strings.Contains(recorder.Body.String(), "Internal error during token generation") {
+		t.Fatalf("body=%q", recorder.Body.String())
 	}
 }
 
