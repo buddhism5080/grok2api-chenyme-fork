@@ -46,7 +46,7 @@ func repeatSSE(event, payloadTemplate string, count int, trailer ...string) stri
 func TestConvertResponsesStreamTerminatesContentDoomLoop(t *testing.T) {
 	stream := repeatSSE("response.output_text.delta",
 		`{"type":"response.output_text.delta","delta":"loop"}`,
-		contentDoomLoopThreshold+8)
+		contentDoomLoopTotal+8)
 	_, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationChat))
 	if err == nil {
 		t.Fatal("repeated visible content must terminate the stream")
@@ -62,7 +62,7 @@ func TestConvertResponsesStreamTerminatesContentDoomLoop(t *testing.T) {
 func TestConvertResponsesStreamAllowsExactlyContentThreshold(t *testing.T) {
 	stream := repeatSSE("response.output_text.delta",
 		`{"type":"response.output_text.delta","delta":"loop"}`,
-		contentDoomLoopThreshold)
+		contentDoomLoopTotal-1)
 	converted, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationChat))
 	if err != nil {
 		t.Fatalf("the content ceiling itself must remain valid: %v", err)
@@ -75,7 +75,7 @@ func TestConvertResponsesStreamAllowsExactlyContentThreshold(t *testing.T) {
 func TestConvertResponsesStreamProtectsDeferredWebSearchText(t *testing.T) {
 	stream := repeatSSE("response.output_text.delta",
 		`{"type":"response.output_text.delta","delta":"loop"}`,
-		contentDoomLoopThreshold+8)
+		contentDoomLoopTotal+8)
 	_, err := io.ReadAll(ConvertResponseStreamWithOptions(
 		io.NopCloser(strings.NewReader(stream)),
 		OperationMessages,
@@ -89,7 +89,7 @@ func TestConvertResponsesStreamProtectsDeferredWebSearchText(t *testing.T) {
 func TestConvertResponsesStreamProtectsAfterStopSequence(t *testing.T) {
 	stream := repeatSSE("response.output_text.delta",
 		`{"type":"response.output_text.delta","delta":"STOP"}`,
-		contentDoomLoopThreshold+8)
+		contentDoomLoopTotal+8)
 	_, err := io.ReadAll(ConvertResponseStreamWithOptions(
 		io.NopCloser(strings.NewReader(stream)),
 		OperationChat,
@@ -103,16 +103,16 @@ func TestConvertResponsesStreamProtectsAfterStopSequence(t *testing.T) {
 // Regression: high/xhigh effort reasoning legitimately repeats short tokens
 // ("so", "hmm", "wait", bullet markers) far more often than visible output.
 // A shared counter at the content threshold truncated valid deep-thinking
-// answers, so reasoning must survive well past contentDoomLoopThreshold.
+// answers, so reasoning must survive well past the visible-content cycle guard.
 func TestConvertResponsesStreamKeepsRepeatedReasoningBelowThreshold(t *testing.T) {
 	for _, event := range []string{"response.reasoning_text.delta", "response.reasoning_summary_text.delta"} {
 		t.Run(event, func(t *testing.T) {
 			// Sit between the two ceilings: this run must be fatal for visible
 			// content but survivable for reasoning.
-			repeats := (contentDoomLoopThreshold + reasoningDoomLoopThreshold) / 2
-			if repeats <= contentDoomLoopThreshold || repeats >= reasoningDoomLoopThreshold {
+			repeats := (contentDoomLoopTotal + reasoningDoomLoopThreshold) / 2
+			if repeats <= contentDoomLoopTotal || repeats >= reasoningDoomLoopThreshold {
 				t.Fatalf("test invariant broken: %d must sit between %d and %d",
-					repeats, contentDoomLoopThreshold, reasoningDoomLoopThreshold)
+					repeats, contentDoomLoopTotal, reasoningDoomLoopThreshold)
 			}
 			stream := repeatSSE(event,
 				fmt.Sprintf(`{"type":%q,"item_id":"rs_1","delta":"hmm"}`, event),
@@ -169,7 +169,7 @@ func TestConvertResponsesStreamTracksSuppressedReasoning(t *testing.T) {
 }
 
 func TestConvertResponsesStreamDoesNotCountFlushedSummaryTwice(t *testing.T) {
-	repeats := (contentDoomLoopThreshold + reasoningDoomLoopThreshold) / 2
+	repeats := (contentDoomLoopTotal + reasoningDoomLoopThreshold) / 2
 	lines := []string{
 		`event: response.created`,
 		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
@@ -238,7 +238,7 @@ func TestConvertResponseStreamGuardsNativeResponsesWithoutRewriting(t *testing.T
 	t.Run("doom loop", func(t *testing.T) {
 		stream := repeatSSE("response.output_text.delta",
 			`{"type":"response.output_text.delta","delta":"loop"}`,
-			contentDoomLoopThreshold+8)
+			contentDoomLoopTotal+8)
 		_, err := io.ReadAll(ConvertResponseStream(
 			io.NopCloser(strings.NewReader(stream)), OperationResponses,
 		))
@@ -265,9 +265,8 @@ func TestConvertResponseStreamCloseImmediatelyClosesUpstream(t *testing.T) {
 	}
 }
 
-// Legitimate visible repetition must survive: markdown horizontal rules and
-// ASCII table borders stream as long runs of an identical single-character
-// delta. This is why the content threshold cannot sit near typical rule width.
+// A 1-item cycle of 59 identical formatting deltas is still allowed; 60 trips
+// the content loop guard.
 func TestConvertResponsesStreamKeepsMarkdownRuleAndTableBorders(t *testing.T) {
 	for _, testCase := range []struct{ name, delta string }{
 		{"horizontal rule", "-"},
@@ -275,10 +274,9 @@ func TestConvertResponsesStreamKeepsMarkdownRuleAndTableBorders(t *testing.T) {
 		{"empty table cells", " | "},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			// A wide rule or table border comfortably exceeds 32 characters.
 			stream := repeatSSE("response.output_text.delta",
 				fmt.Sprintf(`{"type":"response.output_text.delta","delta":%q}`, testCase.delta),
-				80)
+				contentDoomLoopTotal-1)
 			converted, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationChat))
 			if err != nil {
 				t.Fatalf("legitimate repeated formatting must not be treated as a loop: %v", err)
@@ -290,15 +288,13 @@ func TestConvertResponsesStreamKeepsMarkdownRuleAndTableBorders(t *testing.T) {
 	}
 }
 
-// Counters are per-channel and reset on change, so alternating deltas and
-// interleaved reasoning must never accumulate into a false positive.
+// Interleaved reasoning with distinct content must not share a counter.
 func TestConvertResponsesStreamDoomLoopCountersResetAndStaySeparate(t *testing.T) {
 	lines := []string{
 		`event: response.created`,
 		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
 	}
-	// Alternating visible content never trips the content counter.
-	for i := 0; i < contentDoomLoopThreshold*2; i++ {
+	for i := 0; i < contentDoomLoopTotal-1; i++ {
 		delta := "a"
 		if i%2 == 1 {
 			delta = "b"
@@ -307,9 +303,7 @@ func TestConvertResponsesStreamDoomLoopCountersResetAndStaySeparate(t *testing.T
 			`event: response.output_text.delta`,
 			fmt.Sprintf(`data: {"type":"response.output_text.delta","delta":%q}`, delta), "")
 	}
-	// Reasoning repeats interleaved with distinct content must not share a
-	// counter: the reasoning run alone exceeds the content threshold.
-	for i := 0; i < contentDoomLoopThreshold*2; i++ {
+	for i := 0; i < contentDoomLoopTotal*2; i++ {
 		lines = append(lines,
 			`event: response.reasoning_text.delta`,
 			`data: {"type":"response.reasoning_text.delta","item_id":"rs_1","delta":"hmm"}`, "",
@@ -326,5 +320,74 @@ func TestConvertResponsesStreamDoomLoopCountersResetAndStaySeparate(t *testing.T
 	}
 	if !strings.Contains(string(converted), "data: [DONE]") {
 		t.Fatalf("stream did not complete: %s", converted)
+	}
+}
+
+func tileDeltas(pattern []string, n int) []string {
+	out := make([]string, n)
+	for i := 0; i < n; i++ {
+		out[i] = pattern[i%len(pattern)]
+	}
+	return out
+}
+
+func feedContent(deltas []string) error {
+	var tracker streamRepeatTracker
+	for _, delta := range deltas {
+		if err := tracker.trackContent(delta); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func TestContentCycleLoopDetectsOneToThreePeriod(t *testing.T) {
+	tests := []struct {
+		name    string
+		deltas  []string
+		wantErr bool
+	}{
+		{name: "59 identical allowed", deltas: tileDeltas([]string{"loop"}, 59)},
+		{name: "60 identical is a loop", deltas: tileDeltas([]string{"loop"}, 60), wantErr: true},
+		{name: "59 ab allowed", deltas: tileDeltas([]string{" \n", " \n\n"}, 59)},
+		{name: "60 ab is a loop", deltas: tileDeltas([]string{" \n", " \n\n"}, 60), wantErr: true},
+		{name: "60 abc is a loop", deltas: tileDeltas([]string{"a", "b", "c"}, 60), wantErr: true},
+		{name: "60 abcd is not a 1-3 cycle", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 60)},
+		{name: "real tokens then 60 ab", deltas: append([]string{"界面", "和", "引擎", "都", "改", "好"}, tileDeltas([]string{" \n", " \n\n"}, 60)...), wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := feedContent(test.deltas)
+			if test.wantErr {
+				if err == nil || !errors.Is(err, neterror.ErrUpstreamOutputLoop) {
+					t.Fatalf("err = %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err = %v", err)
+			}
+		})
+	}
+}
+
+func TestConvertResponsesStreamTerminatesAlternatingWhitespaceLoop(t *testing.T) {
+	lines := []string{
+		`event: response.created`,
+		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
+	}
+	for i := 0; i < contentDoomLoopTotal; i++ {
+		delta := " \n"
+		if i%2 == 1 {
+			delta = " \n\n"
+		}
+		lines = append(lines,
+			`event: response.output_text.delta`,
+			fmt.Sprintf(`data: {"type":"response.output_text.delta","delta":%q}`, delta), "")
+	}
+	stream := strings.Join(lines, "\n")
+	_, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationChat))
+	if err == nil || !errors.Is(err, neterror.ErrUpstreamOutputLoop) {
+		t.Fatalf("alternating whitespace must terminate: %v", err)
 	}
 }
