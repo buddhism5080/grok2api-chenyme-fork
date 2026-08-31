@@ -16,16 +16,11 @@ import (
 const (
 	maxDeferredSearchTextBytes = 8 << 20
 
-	// contentDoomLoopTotal is the number of visible content deltas that must
-	// follow a 1–3 item cycle before the stream is terminated. The count is
-	// across the whole cycle (60 total), not 60 of each item.
+	// doomLoopTotal is the number of deltas that must follow a 1–3 item
+	// cycle before the stream is terminated. The count is across the whole
+	// cycle (60 total), not 60 of each item. Content and reasoning share it.
 	contentDoomLoopTotal     = 60
 	contentDoomLoopMaxPeriod = 3
-
-	// reasoningDoomLoopThreshold 高于内容阈值：high/xhigh 推理会大量重复
-	// 同一短标记（"so"、"hmm"、"wait"、列表符号）。共用低阈值会过早终止
-	// 有效的深度推理响应。
-	reasoningDoomLoopThreshold = 256
 )
 
 // ConvertResponseStream 将 Responses SSE 转换为 Chat Completions 或 Anthropic Messages SSE。
@@ -88,9 +83,8 @@ type streamConverter struct {
 // streamRepeatTracker 在协议转换、缓冲和 stop filter 之前跟踪上游增量，
 // 避免任一下游路径绕过循环保护。
 type streamRepeatTracker struct {
-	contentWindow     []string
-	lastReasonDelta   string
-	reasonRepeatCount int
+	contentWindow   []string
+	reasoningWindow []string
 }
 
 // streamPipeReadCloser ensures a downstream cancellation immediately closes the
@@ -811,30 +805,46 @@ func (t *streamRepeatTracker) trackContent(delta string) error {
 	if delta == "" {
 		return nil
 	}
-	t.contentWindow = append(t.contentWindow, delta)
-	if len(t.contentWindow) > contentDoomLoopTotal {
-		t.contentWindow = append([]string(nil), t.contentWindow[len(t.contentWindow)-contentDoomLoopTotal:]...)
-	}
-	if period := contentCyclePeriod(t.contentWindow); period > 0 {
+	t.contentWindow = appendCycleWindow(t.contentWindow, delta)
+	if period := deltaCyclePeriod(t.contentWindow); period > 0 {
 		return fmt.Errorf("%w (content cycle period %d over %d deltas)", neterror.ErrUpstreamOutputLoop, period, contentDoomLoopTotal)
 	}
 	return nil
 }
 
-func contentCyclePeriod(deltas []string) int {
+func (t *streamRepeatTracker) trackReasoning(delta, message string) error {
+	if delta == "" {
+		return nil
+	}
+	t.reasoningWindow = appendCycleWindow(t.reasoningWindow, delta)
+	if period := deltaCyclePeriod(t.reasoningWindow); period > 0 {
+		return fmt.Errorf("%w: %s (cycle period %d over %d deltas)", neterror.ErrUpstreamOutputLoop, message, period, contentDoomLoopTotal)
+	}
+	return nil
+}
+
+func appendCycleWindow(window []string, delta string) []string {
+	window = append(window, delta)
+	if len(window) > contentDoomLoopTotal {
+		return append([]string(nil), window[len(window)-contentDoomLoopTotal:]...)
+	}
+	return window
+}
+
+func deltaCyclePeriod(deltas []string) int {
 	if len(deltas) < contentDoomLoopTotal {
 		return 0
 	}
 	window := deltas[len(deltas)-contentDoomLoopTotal:]
 	for period := 1; period <= contentDoomLoopMaxPeriod; period++ {
-		if contentWindowIsPeriodic(window, period) {
+		if cycleWindowIsPeriodic(window, period) {
 			return period
 		}
 	}
 	return 0
 }
 
-func contentWindowIsPeriodic(window []string, period int) bool {
+func cycleWindowIsPeriodic(window []string, period int) bool {
 	if period < 1 || len(window) < period {
 		return false
 	}
@@ -844,22 +854,6 @@ func contentWindowIsPeriodic(window []string, period int) bool {
 		}
 	}
 	return true
-}
-
-func (t *streamRepeatTracker) trackReasoning(delta, message string) error {
-	if delta == "" {
-		return nil
-	}
-	if delta != t.lastReasonDelta {
-		t.lastReasonDelta = delta
-		t.reasonRepeatCount = 1
-		return nil
-	}
-	t.reasonRepeatCount++
-	if t.reasonRepeatCount > reasoningDoomLoopThreshold {
-		return fmt.Errorf("%w: %s (repeated delta %d times)", neterror.ErrUpstreamOutputLoop, message, t.reasonRepeatCount)
-	}
-	return nil
 }
 
 // guardResponseStream 保持 native Responses SSE 的原始字节不变，同时在读取时

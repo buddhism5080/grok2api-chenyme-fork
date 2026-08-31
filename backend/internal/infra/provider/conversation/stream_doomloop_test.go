@@ -100,28 +100,18 @@ func TestConvertResponsesStreamProtectsAfterStopSequence(t *testing.T) {
 	}
 }
 
-// Regression: high/xhigh effort reasoning legitimately repeats short tokens
-// ("so", "hmm", "wait", bullet markers) far more often than visible output.
-// A shared counter at the content threshold truncated valid deep-thinking
-// answers, so reasoning must survive well past the visible-content cycle guard.
+// 59 identical reasoning deltas remain valid; 60 trips the shared cycle guard.
 func TestConvertResponsesStreamKeepsRepeatedReasoningBelowThreshold(t *testing.T) {
 	for _, event := range []string{"response.reasoning_text.delta", "response.reasoning_summary_text.delta"} {
 		t.Run(event, func(t *testing.T) {
-			// Sit between the two ceilings: this run must be fatal for visible
-			// content but survivable for reasoning.
-			repeats := (contentDoomLoopTotal + reasoningDoomLoopThreshold) / 2
-			if repeats <= contentDoomLoopTotal || repeats >= reasoningDoomLoopThreshold {
-				t.Fatalf("test invariant broken: %d must sit between %d and %d",
-					repeats, contentDoomLoopTotal, reasoningDoomLoopThreshold)
-			}
 			stream := repeatSSE(event,
 				fmt.Sprintf(`{"type":%q,"item_id":"rs_1","delta":"hmm"}`, event),
-				repeats,
+				contentDoomLoopTotal-1,
 				`event: response.output_text.delta`,
 				`data: {"type":"response.output_text.delta","delta":"answer"}`, "")
 			converted, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationChat))
 			if err != nil {
-				t.Fatalf("deep reasoning must not be treated as a loop: %v", err)
+				t.Fatalf("59 reasoning deltas must not be treated as a loop: %v", err)
 			}
 			if !strings.Contains(string(converted), `"content":"answer"`) {
 				t.Fatalf("visible answer was lost: %s", converted)
@@ -143,7 +133,7 @@ func TestConvertResponsesStreamTerminatesReasoningDoomLoop(t *testing.T) {
 		t.Run(testCase.event, func(t *testing.T) {
 			stream := repeatSSE(testCase.event,
 				fmt.Sprintf(`{"type":%q,"item_id":"rs_1","delta":"hmm"}`, testCase.event),
-				reasoningDoomLoopThreshold+8)
+				contentDoomLoopTotal+8)
 			_, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationChat))
 			if err == nil {
 				t.Fatal("a runaway reasoning loop must still terminate the stream")
@@ -161,7 +151,7 @@ func TestConvertResponsesStreamTerminatesReasoningDoomLoop(t *testing.T) {
 func TestConvertResponsesStreamTracksSuppressedReasoning(t *testing.T) {
 	stream := repeatSSE("response.reasoning_text.delta",
 		`{"type":"response.reasoning_text.delta","item_id":"rs_1","delta":"hmm"}`,
-		reasoningDoomLoopThreshold+8)
+		contentDoomLoopTotal+8)
 	_, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationMessages))
 	if err == nil || !strings.Contains(err.Error(), "model reasoning loop detected") {
 		t.Fatalf("reasoning hidden from the downstream protocol must still be guarded: %v", err)
@@ -169,7 +159,7 @@ func TestConvertResponsesStreamTracksSuppressedReasoning(t *testing.T) {
 }
 
 func TestConvertResponsesStreamDoesNotCountFlushedSummaryTwice(t *testing.T) {
-	repeats := (contentDoomLoopTotal + reasoningDoomLoopThreshold) / 2
+	repeats := contentDoomLoopTotal - 1
 	lines := []string{
 		`event: response.created`,
 		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
@@ -202,12 +192,12 @@ func TestConvertResponsesStreamSharesReasoningCounterAcrossEventTypes(t *testing
 		`event: response.created`,
 		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
 	}
-	for i := 0; i < reasoningDoomLoopThreshold/2; i++ {
+	for i := 0; i < contentDoomLoopTotal/2; i++ {
 		lines = append(lines,
 			`event: response.reasoning_summary_text.delta`,
 			`data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_1","delta":"hmm"}`, "")
 	}
-	for i := 0; i <= reasoningDoomLoopThreshold/2; i++ {
+	for i := 0; i <= contentDoomLoopTotal/2; i++ {
 		lines = append(lines,
 			`event: response.reasoning_text.delta`,
 			`data: {"type":"response.reasoning_text.delta","item_id":"rs_1","delta":"hmm"}`, "")
@@ -303,7 +293,7 @@ func TestConvertResponsesStreamDoomLoopCountersResetAndStaySeparate(t *testing.T
 			`event: response.output_text.delta`,
 			fmt.Sprintf(`data: {"type":"response.output_text.delta","delta":%q}`, delta), "")
 	}
-	for i := 0; i < contentDoomLoopTotal*2; i++ {
+	for i := 0; i < contentDoomLoopTotal-1; i++ {
 		lines = append(lines,
 			`event: response.reasoning_text.delta`,
 			`data: {"type":"response.reasoning_text.delta","item_id":"rs_1","delta":"hmm"}`, "",
@@ -366,6 +356,69 @@ func TestContentCycleLoopDetectsOneToThreePeriod(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected err = %v", err)
+			}
+		})
+	}
+}
+
+func feedReasoning(deltas []string) error {
+	var tracker streamRepeatTracker
+	for _, delta := range deltas {
+		if err := tracker.trackReasoning(delta, "model reasoning loop detected"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func TestReasoningCycleLoopDetectsOneToThreePeriod(t *testing.T) {
+	tests := []struct {
+		name    string
+		deltas  []string
+		wantErr bool
+	}{
+		{name: "59 identical allowed", deltas: tileDeltas([]string{"hmm"}, 59)},
+		{name: "60 identical is a loop", deltas: tileDeltas([]string{"hmm"}, 60), wantErr: true},
+		{name: "59 ab allowed", deltas: tileDeltas([]string{"so", "wait"}, 59)},
+		{name: "60 ab is a loop", deltas: tileDeltas([]string{"so", "wait"}, 60), wantErr: true},
+		{name: "60 abc is a loop", deltas: tileDeltas([]string{"so", "hmm", "wait"}, 60), wantErr: true},
+		{name: "60 abcd is not a 1-3 cycle", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 60)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := feedReasoning(test.deltas)
+			if test.wantErr {
+				if err == nil || !errors.Is(err, neterror.ErrUpstreamOutputLoop) {
+					t.Fatalf("err = %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err = %v", err)
+			}
+		})
+	}
+}
+
+func TestConvertResponsesStreamTerminatesAlternatingReasoningLoop(t *testing.T) {
+	for _, event := range []string{"response.reasoning_text.delta", "response.reasoning_summary_text.delta"} {
+		t.Run(event, func(t *testing.T) {
+			lines := []string{
+				`event: response.created`,
+				`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
+			}
+			for i := 0; i < contentDoomLoopTotal; i++ {
+				delta := "so"
+				if i%2 == 1 {
+					delta = "wait"
+				}
+				lines = append(lines,
+					"event: "+event,
+					fmt.Sprintf(`data: {"type":%q,"item_id":"rs_1","delta":%q}`, event, delta), "")
+			}
+			_, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(strings.Join(lines, "\n"))), OperationChat))
+			if err == nil || !errors.Is(err, neterror.ErrUpstreamOutputLoop) {
+				t.Fatalf("alternating reasoning must terminate: %v", err)
 			}
 		})
 	}
