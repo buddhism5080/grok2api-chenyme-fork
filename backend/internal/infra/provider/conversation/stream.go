@@ -16,11 +16,11 @@ import (
 const (
 	maxDeferredSearchTextBytes = 8 << 20
 
-	// contentDoomLoopThreshold 连续重复同一可见内容增量时终止流。真正的
-	// 内容循环会消耗配额和客户端上下文，因此远低于推理上限；但仍需容纳
-	// 合法重复：markdown 分隔线与表格边框会以相同单字符增量（"-"、"="、
-	// "|"）连续输出。
-	contentDoomLoopThreshold = 128
+	// contentDoomLoopTotal is the number of visible content deltas that must
+	// follow a 1–3 item cycle before the stream is terminated. The count is
+	// across the whole cycle (60 total), not 60 of each item.
+	contentDoomLoopTotal     = 60
+	contentDoomLoopMaxPeriod = 3
 
 	// reasoningDoomLoopThreshold 高于内容阈值：high/xhigh 推理会大量重复
 	// 同一短标记（"so"、"hmm"、"wait"、列表符号）。共用低阈值会过早终止
@@ -88,10 +88,9 @@ type streamConverter struct {
 // streamRepeatTracker 在协议转换、缓冲和 stop filter 之前跟踪上游增量，
 // 避免任一下游路径绕过循环保护。
 type streamRepeatTracker struct {
-	lastContentDelta   string
-	contentRepeatCount int
-	lastReasonDelta    string
-	reasonRepeatCount  int
+	contentWindow     []string
+	lastReasonDelta   string
+	reasonRepeatCount int
 }
 
 // streamPipeReadCloser ensures a downstream cancellation immediately closes the
@@ -812,16 +811,39 @@ func (t *streamRepeatTracker) trackContent(delta string) error {
 	if delta == "" {
 		return nil
 	}
-	if delta != t.lastContentDelta {
-		t.lastContentDelta = delta
-		t.contentRepeatCount = 1
-		return nil
+	t.contentWindow = append(t.contentWindow, delta)
+	if len(t.contentWindow) > contentDoomLoopTotal {
+		t.contentWindow = append([]string(nil), t.contentWindow[len(t.contentWindow)-contentDoomLoopTotal:]...)
 	}
-	t.contentRepeatCount++
-	if t.contentRepeatCount > contentDoomLoopThreshold {
-		return fmt.Errorf("%w (repeated content delta %d times)", neterror.ErrUpstreamOutputLoop, t.contentRepeatCount)
+	if period := contentCyclePeriod(t.contentWindow); period > 0 {
+		return fmt.Errorf("%w (content cycle period %d over %d deltas)", neterror.ErrUpstreamOutputLoop, period, contentDoomLoopTotal)
 	}
 	return nil
+}
+
+func contentCyclePeriod(deltas []string) int {
+	if len(deltas) < contentDoomLoopTotal {
+		return 0
+	}
+	window := deltas[len(deltas)-contentDoomLoopTotal:]
+	for period := 1; period <= contentDoomLoopMaxPeriod; period++ {
+		if contentWindowIsPeriodic(window, period) {
+			return period
+		}
+	}
+	return 0
+}
+
+func contentWindowIsPeriodic(window []string, period int) bool {
+	if period < 1 || len(window) < period {
+		return false
+	}
+	for i := period; i < len(window); i++ {
+		if window[i] != window[i-period] {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *streamRepeatTracker) trackReasoning(delta, message string) error {
