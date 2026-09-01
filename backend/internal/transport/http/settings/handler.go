@@ -56,15 +56,15 @@ type frontendConfigDTO struct {
 }
 
 type providerBuildConfigDTO struct {
-	BaseURL               string `json:"baseURL"`
-	FallbackBaseURL       string `json:"fallbackBaseURL"`
-	ClientVersion         string `json:"clientVersion"`
-	ClientIdentifier      string `json:"clientIdentifier"`
-	TokenAuth             string `json:"tokenAuth"`
-	TokenAuthConfigured   bool   `json:"tokenAuthConfigured"`
-	UserAgent             string `json:"userAgent"`
-	ResponseHeaderTimeout string `json:"responseHeaderTimeout"`
-	StreamIdleTimeout     string `json:"streamIdleTimeout"`
+	BaseURL                       string `json:"baseURL"`
+	FallbackBaseURL               string `json:"fallbackBaseURL"`
+	ClientVersion                 string `json:"clientVersion"`
+	ClientIdentifier              string `json:"clientIdentifier"`
+	TokenAuth                     string `json:"tokenAuth"`
+	TokenAuthConfigured           bool   `json:"tokenAuthConfigured"`
+	UserAgent                     string `json:"userAgent"`
+	ResponseHeaderTimeout         string `json:"responseHeaderTimeout"`
+	StreamIdleTimeout             string `json:"streamIdleTimeout"`
 	StreamFirstCharTimeoutEnabled bool   `json:"streamFirstCharTimeoutEnabled"`
 	StreamFirstCharTimeout        string `json:"streamFirstCharTimeout"`
 }
@@ -100,20 +100,21 @@ type batchConfigDTO struct {
 }
 
 type routingConfigDTO struct {
-	StickyTTL                      string                      `json:"stickyTTL"`
-	CooldownBase                   string                      `json:"cooldownBase"`
-	CooldownMax                    string                      `json:"cooldownMax"`
-	CapacityWait                   string                      `json:"capacityWait"`
-	MaxAttempts                    int                         `json:"maxAttempts"`
-	VideoMaxAttempts               int                         `json:"videoMaxAttempts"`
-	PreferFreeBuild                bool                        `json:"preferFreeBuild"`
-	MarkBuildChatDeniedAsReauth    *bool                       `json:"markBuildChatDeniedAsReauth,omitempty"`
-	AccountIsolatedConnections     *bool                       `json:"accountIsolatedConnections,omitempty"`
-	BuildHighTokenSpeedAutoDisable *bool                       `json:"buildHighTokenSpeedAutoDisable,omitempty"`
-	BuildHighTokenSpeedThreshold   *float64                    `json:"buildHighTokenSpeedThreshold,omitempty"`
-	BuildHighTokenSpeedOverheadMS  *int64                      `json:"buildHighTokenSpeedOverheadMS,omitempty"`
-	BuildHighTokenSpeedModelIDs    *[]string                   `json:"buildHighTokenSpeedModelIDs,omitempty"`
-	SegmentedSelector              *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
+	StickyTTL                       string                      `json:"stickyTTL"`
+	CooldownBase                    string                      `json:"cooldownBase"`
+	CooldownMax                     string                      `json:"cooldownMax"`
+	CapacityWait                    string                      `json:"capacityWait"`
+	MaxAttempts                     int                         `json:"maxAttempts"`
+	VideoMaxAttempts                int                         `json:"videoMaxAttempts"`
+	PreferFreeBuild                 bool                        `json:"preferFreeBuild"`
+	MarkBuildChatDeniedAsReauth     *bool                       `json:"markBuildChatDeniedAsReauth,omitempty"`
+	AccountIsolatedConnections      *bool                       `json:"accountIsolatedConnections,omitempty"`
+	BuildHighTokenSpeedAutoDisable  *bool                       `json:"buildHighTokenSpeedAutoDisable,omitempty"`
+	BuildHighTokenSpeedThreshold    *float64                    `json:"buildHighTokenSpeedThreshold,omitempty"`
+	BuildHighTokenSpeedOverheadMS   *int64                      `json:"buildHighTokenSpeedOverheadMS,omitempty"`
+	BuildHighTokenSpeedModelIDs     *[]string                   `json:"buildHighTokenSpeedModelIDs,omitempty"`
+	BuildUsagePenaltyTokenThreshold *int64                      `json:"buildUsagePenaltyTokenThreshold,omitempty"`
+	SegmentedSelector               *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
 }
 
 type segmentedSelectorConfigDTO struct {
@@ -198,8 +199,8 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 			BaseURL: value.ProviderBuild.BaseURL, FallbackBaseURL: value.ProviderBuild.FallbackBaseURL,
 			ClientVersion: value.ProviderBuild.ClientVersion, ClientIdentifier: value.ProviderBuild.ClientIdentifier,
 			TokenAuth: value.ProviderBuild.TokenAuth, UserAgent: value.ProviderBuild.UserAgent,
-			ResponseHeaderTimeout: value.ProviderBuild.ResponseHeaderTimeout,
-			StreamIdleTimeout:     value.ProviderBuild.StreamIdleTimeout,
+			ResponseHeaderTimeout:         value.ProviderBuild.ResponseHeaderTimeout,
+			StreamIdleTimeout:             value.ProviderBuild.StreamIdleTimeout,
 			StreamFirstCharTimeoutEnabled: value.ProviderBuild.StreamFirstCharTimeoutEnabled,
 			StreamFirstCharTimeout:        value.ProviderBuild.StreamFirstCharTimeout,
 		},
@@ -236,19 +237,21 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 		Routing: settingsapp.RoutingConfig{
 			StickyTTL: value.Routing.StickyTTL, CooldownBase: value.Routing.CooldownBase,
 			CooldownMax: value.Routing.CooldownMax, CapacityWait: value.Routing.CapacityWait, MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-			PreferFreeBuild:                        value.Routing.PreferFreeBuild,
-			MarkBuildChatDeniedAsReauth:            boolValue(value.Routing.MarkBuildChatDeniedAsReauth),
-			MarkBuildChatDeniedAsReauthProvided:    value.Routing.MarkBuildChatDeniedAsReauth != nil,
-			AccountIsolatedConnections:             boolValue(value.Routing.AccountIsolatedConnections),
-			AccountIsolatedConnectionsProvided:     value.Routing.AccountIsolatedConnections != nil,
-			BuildHighTokenSpeedAutoDisable:         boolValue(value.Routing.BuildHighTokenSpeedAutoDisable),
-			BuildHighTokenSpeedAutoDisableProvided: value.Routing.BuildHighTokenSpeedAutoDisable != nil,
-			BuildHighTokenSpeedThreshold:           float64Value(value.Routing.BuildHighTokenSpeedThreshold),
-			BuildHighTokenSpeedThresholdProvided:   value.Routing.BuildHighTokenSpeedThreshold != nil,
-			BuildHighTokenSpeedOverheadMS:          int64Value(value.Routing.BuildHighTokenSpeedOverheadMS),
-			BuildHighTokenSpeedOverheadMSProvided:  value.Routing.BuildHighTokenSpeedOverheadMS != nil,
-			BuildHighTokenSpeedModelIDs:            stringSliceValue(value.Routing.BuildHighTokenSpeedModelIDs),
-			BuildHighTokenSpeedModelIDsProvided:    value.Routing.BuildHighTokenSpeedModelIDs != nil,
+			PreferFreeBuild:                         value.Routing.PreferFreeBuild,
+			MarkBuildChatDeniedAsReauth:             boolValue(value.Routing.MarkBuildChatDeniedAsReauth),
+			MarkBuildChatDeniedAsReauthProvided:     value.Routing.MarkBuildChatDeniedAsReauth != nil,
+			AccountIsolatedConnections:              boolValue(value.Routing.AccountIsolatedConnections),
+			AccountIsolatedConnectionsProvided:      value.Routing.AccountIsolatedConnections != nil,
+			BuildHighTokenSpeedAutoDisable:          boolValue(value.Routing.BuildHighTokenSpeedAutoDisable),
+			BuildHighTokenSpeedAutoDisableProvided:  value.Routing.BuildHighTokenSpeedAutoDisable != nil,
+			BuildHighTokenSpeedThreshold:            float64Value(value.Routing.BuildHighTokenSpeedThreshold),
+			BuildHighTokenSpeedThresholdProvided:    value.Routing.BuildHighTokenSpeedThreshold != nil,
+			BuildHighTokenSpeedOverheadMS:           int64Value(value.Routing.BuildHighTokenSpeedOverheadMS),
+			BuildHighTokenSpeedOverheadMSProvided:   value.Routing.BuildHighTokenSpeedOverheadMS != nil,
+			BuildHighTokenSpeedModelIDs:             stringSliceValue(value.Routing.BuildHighTokenSpeedModelIDs),
+			BuildHighTokenSpeedModelIDsProvided:     value.Routing.BuildHighTokenSpeedModelIDs != nil,
+			BuildUsagePenaltyTokenThreshold:         int64Value(value.Routing.BuildUsagePenaltyTokenThreshold),
+			BuildUsagePenaltyTokenThresholdProvided: value.Routing.BuildUsagePenaltyTokenThreshold != nil,
 		},
 		Audit: settingsapp.AuditConfig{
 			BufferSize: value.Audit.BufferSize, BatchSize: value.Audit.BatchSize, FlushInterval: value.Audit.FlushInterval, CommitDelayMS: value.Audit.CommitDelayMS,
@@ -293,8 +296,8 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 				ClientVersion: config.ProviderBuild.ClientVersion, ClientIdentifier: config.ProviderBuild.ClientIdentifier,
 				TokenAuth:           config.ProviderBuild.TokenAuth,
 				TokenAuthConfigured: strings.TrimSpace(config.ProviderBuild.TokenAuth) != "", UserAgent: config.ProviderBuild.UserAgent,
-				ResponseHeaderTimeout: config.ProviderBuild.ResponseHeaderTimeout,
-				StreamIdleTimeout:     config.ProviderBuild.StreamIdleTimeout,
+				ResponseHeaderTimeout:         config.ProviderBuild.ResponseHeaderTimeout,
+				StreamIdleTimeout:             config.ProviderBuild.StreamIdleTimeout,
 				StreamFirstCharTimeoutEnabled: config.ProviderBuild.StreamFirstCharTimeoutEnabled,
 				StreamFirstCharTimeout:        config.ProviderBuild.StreamFirstCharTimeout,
 			},
@@ -330,13 +333,14 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 			Routing: routingConfigDTO{
 				StickyTTL: config.Routing.StickyTTL, CooldownBase: config.Routing.CooldownBase,
 				CooldownMax: config.Routing.CooldownMax, CapacityWait: config.Routing.CapacityWait, MaxAttempts: config.Routing.MaxAttempts, VideoMaxAttempts: config.Routing.VideoMaxAttempts,
-				MarkBuildChatDeniedAsReauth:    boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),
-				PreferFreeBuild:                config.Routing.PreferFreeBuild,
-				AccountIsolatedConnections:     boolPointer(config.Routing.AccountIsolatedConnections),
-				BuildHighTokenSpeedAutoDisable: boolPointer(config.Routing.BuildHighTokenSpeedAutoDisable),
-				BuildHighTokenSpeedThreshold:   float64Pointer(config.Routing.BuildHighTokenSpeedThreshold),
-				BuildHighTokenSpeedOverheadMS:  int64Pointer(config.Routing.BuildHighTokenSpeedOverheadMS),
-				BuildHighTokenSpeedModelIDs:    stringSlicePointer(config.Routing.BuildHighTokenSpeedModelIDs),
+				MarkBuildChatDeniedAsReauth:     boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),
+				PreferFreeBuild:                 config.Routing.PreferFreeBuild,
+				AccountIsolatedConnections:      boolPointer(config.Routing.AccountIsolatedConnections),
+				BuildHighTokenSpeedAutoDisable:  boolPointer(config.Routing.BuildHighTokenSpeedAutoDisable),
+				BuildHighTokenSpeedThreshold:    float64Pointer(config.Routing.BuildHighTokenSpeedThreshold),
+				BuildHighTokenSpeedOverheadMS:   int64Pointer(config.Routing.BuildHighTokenSpeedOverheadMS),
+				BuildHighTokenSpeedModelIDs:     stringSlicePointer(config.Routing.BuildHighTokenSpeedModelIDs),
+				BuildUsagePenaltyTokenThreshold: int64Pointer(config.Routing.BuildUsagePenaltyTokenThreshold),
 				SegmentedSelector: &segmentedSelectorConfigDTO{
 					Enabled: config.Routing.SegmentedSelector.Enabled, MinCandidates: config.Routing.SegmentedSelector.MinCandidates,
 					WindowSize: config.Routing.SegmentedSelector.WindowSize,

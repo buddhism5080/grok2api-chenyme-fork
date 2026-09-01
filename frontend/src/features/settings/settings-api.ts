@@ -26,6 +26,7 @@ export type SettingsConfigDTO = {
     buildHighTokenSpeedThreshold: number;
     buildHighTokenSpeedOverheadMS: number;
     buildHighTokenSpeedModelIDs: string[];
+    buildUsagePenaltyTokenThreshold: number;
     segmentedSelector: { enabled: boolean; minCandidates: number; windowSize: number };
   };
   audit: { bufferSize: number; batchSize: number; flushInterval: string; commitDelayMS: number; retentionDays?: number };
@@ -138,6 +139,7 @@ const settingsConfigValidator = hasShape({
     buildHighTokenSpeedThreshold: isOptional(isNumber),
     buildHighTokenSpeedOverheadMS: isOptional(isNumber),
     buildHighTokenSpeedModelIDs: isOptional(isArrayOf(isString)),
+    buildUsagePenaltyTokenThreshold: isOptional(isNumber),
     segmentedSelector: isOptional(hasShape({ enabled: isBoolean, minCandidates: isNumber, windowSize: isNumber })),
   }),
   audit: hasShape({
@@ -198,6 +200,7 @@ function withSettingsDefaults(snapshot: SettingsSnapshotDTO): SettingsSnapshotDT
         buildHighTokenSpeedThreshold: snapshot.config.routing.buildHighTokenSpeedThreshold ?? 1000,
         buildHighTokenSpeedOverheadMS: snapshot.config.routing.buildHighTokenSpeedOverheadMS ?? 2000,
         buildHighTokenSpeedModelIDs: snapshot.config.routing.buildHighTokenSpeedModelIDs ?? [],
+        buildUsagePenaltyTokenThreshold: snapshot.config.routing.buildUsagePenaltyTokenThreshold ?? 0,
         segmentedSelector: {
           enabled: segmentedSelector.enabled ?? true,
           minCandidates: segmentedSelector.minCandidates || 3000,

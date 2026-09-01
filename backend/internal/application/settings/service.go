@@ -109,15 +109,19 @@ type RoutingConfig struct {
 	AccountIsolatedConnections          bool
 	// AccountIsolatedConnectionsProvided preserves the current value when an
 	// older management client omits the newly added field.
-	AccountIsolatedConnectionsProvided bool
-	BuildHighTokenSpeedAutoDisable          bool
-	BuildHighTokenSpeedAutoDisableProvided  bool
-	BuildHighTokenSpeedThreshold            float64
-	BuildHighTokenSpeedThresholdProvided    bool
-	BuildHighTokenSpeedOverheadMS           int64
-	BuildHighTokenSpeedOverheadMSProvided   bool
-	BuildHighTokenSpeedModelIDs             []string
-	BuildHighTokenSpeedModelIDsProvided     bool
+	AccountIsolatedConnectionsProvided     bool
+	BuildHighTokenSpeedAutoDisable         bool
+	BuildHighTokenSpeedAutoDisableProvided bool
+	BuildHighTokenSpeedThreshold           float64
+	BuildHighTokenSpeedThresholdProvided   bool
+	BuildHighTokenSpeedOverheadMS          int64
+	BuildHighTokenSpeedOverheadMSProvided  bool
+	BuildHighTokenSpeedModelIDs            []string
+	BuildHighTokenSpeedModelIDsProvided    bool
+	// BuildUsagePenaltyTokenThreshold is the Build Free input+output token latch.
+	// 0 disables the guard. Older clients omit the field; Provided preserves the current value.
+	BuildUsagePenaltyTokenThreshold         int64
+	BuildUsagePenaltyTokenThresholdProvided bool
 	SegmentedSelector                       SegmentedSelectorConfig
 	SegmentedSelectorProvided               bool
 }
@@ -325,8 +329,8 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 		BaseURL: value.ProviderBuild.BaseURL, FallbackBaseURL: config.NormalizeBuildFallbackBaseURL(value.ProviderBuild.FallbackBaseURL),
 		ClientVersion: value.ProviderBuild.ClientVersion, ClientIdentifier: value.ProviderBuild.ClientIdentifier,
 		TokenAuth: value.ProviderBuild.TokenAuth, UserAgent: value.ProviderBuild.UserAgent,
-		ResponseHeaderTimeout: config.Duration(value.ProviderBuild.ResponseHeaderTimeout),
-		StreamIdleTimeout:     config.Duration(value.ProviderBuild.StreamIdleTimeout),
+		ResponseHeaderTimeout:         config.Duration(value.ProviderBuild.ResponseHeaderTimeout),
+		StreamIdleTimeout:             config.Duration(value.ProviderBuild.StreamIdleTimeout),
 		StreamFirstCharTimeoutEnabled: value.ProviderBuild.StreamFirstCharTimeoutEnabled,
 		StreamFirstCharTimeout:        config.Duration(value.ProviderBuild.StreamFirstCharTimeout),
 	}
@@ -425,17 +429,18 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 	base.Routing = config.RoutingConfig{
 		StickyTTL: config.Duration(value.Routing.StickyTTL), CooldownBase: config.Duration(value.Routing.CooldownBase),
 		CooldownMax: config.Duration(value.Routing.CooldownMax), CapacityWait: config.Duration(capacityWait), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-		MarkBuildChatDeniedAsReauth:        value.Routing.MarkBuildChatDeniedAsReauth,
-		PreferFreeBuild:                    value.Routing.PreferFreeBuild,
-		AccountIsolatedConnections:         accountIsolatedConnections,
-		BuildHighTokenSpeedAutoDisable:     buildHighTokenSpeedAutoDisable,
-		BuildHighTokenSpeedThreshold:       buildHighTokenSpeedThreshold,
-		BuildHighTokenSpeedOverheadMS:      buildHighTokenSpeedOverheadMS,
-		BuildHighTokenSpeedModelIDs:        normalizeBuildHighTokenSpeedModelIDs(buildHighTokenSpeedModelIDs),
-		SegmentedSelectorEnabled:           segmentedEnabled,
-		SegmentedMinCandidates:             segmentedMinCandidates,
-		SegmentedWindowSize:                segmentedWindowSize,
-		ReasoningReplayEnabled:             base.Routing.ReasoningReplayEnabled, ReasoningReplayTTL: base.Routing.ReasoningReplayTTL,
+		MarkBuildChatDeniedAsReauth:     value.Routing.MarkBuildChatDeniedAsReauth,
+		PreferFreeBuild:                 value.Routing.PreferFreeBuild,
+		AccountIsolatedConnections:      accountIsolatedConnections,
+		BuildHighTokenSpeedAutoDisable:  buildHighTokenSpeedAutoDisable,
+		BuildHighTokenSpeedThreshold:    buildHighTokenSpeedThreshold,
+		BuildHighTokenSpeedOverheadMS:   buildHighTokenSpeedOverheadMS,
+		BuildHighTokenSpeedModelIDs:     normalizeBuildHighTokenSpeedModelIDs(buildHighTokenSpeedModelIDs),
+		BuildUsagePenaltyTokenThreshold: value.Routing.BuildUsagePenaltyTokenThreshold,
+		SegmentedSelectorEnabled:        segmentedEnabled,
+		SegmentedMinCandidates:          segmentedMinCandidates,
+		SegmentedWindowSize:             segmentedWindowSize,
+		ReasoningReplayEnabled:          base.Routing.ReasoningReplayEnabled, ReasoningReplayTTL: base.Routing.ReasoningReplayTTL,
 		ReasoningReplayMaxEntries: base.Routing.ReasoningReplayMaxEntries,
 	}
 	commitDelay := base.Audit.CommitDelay.Value()
@@ -484,8 +489,8 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 			BaseURL: value.Provider.Build.BaseURL, FallbackBaseURL: config.NormalizeBuildFallbackBaseURL(value.Provider.Build.FallbackBaseURL),
 			ClientVersion: value.Provider.Build.ClientVersion, ClientIdentifier: value.Provider.Build.ClientIdentifier,
 			TokenAuth: value.Provider.Build.TokenAuth, UserAgent: value.Provider.Build.UserAgent,
-			ResponseHeaderTimeout: value.Provider.Build.ResponseHeaderTimeout.Value(),
-			StreamIdleTimeout:     value.Provider.Build.StreamIdleTimeout.Value(),
+			ResponseHeaderTimeout:         value.Provider.Build.ResponseHeaderTimeout.Value(),
+			StreamIdleTimeout:             value.Provider.Build.StreamIdleTimeout.Value(),
 			StreamFirstCharTimeoutEnabled: value.Provider.Build.StreamFirstCharTimeoutEnabled,
 			StreamFirstCharTimeout:        value.Provider.Build.StreamFirstCharTimeout.Value(),
 		},
@@ -521,13 +526,14 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 		Routing: settingsdomain.RoutingConfig{
 			StickyTTL: value.Routing.StickyTTL.Value(), CooldownBase: value.Routing.CooldownBase.Value(),
 			CooldownMax: value.Routing.CooldownMax.Value(), CapacityWait: value.Routing.CapacityWait.Value(), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-			MarkBuildChatDeniedAsReauth:    value.Routing.MarkBuildChatDeniedAsReauth,
-			PreferFreeBuild:                value.Routing.PreferFreeBuild,
-			AccountIsolatedConnections:     &accountIsolatedConnections,
-			BuildHighTokenSpeedAutoDisable: &buildHighTokenSpeedAutoDisable,
-			BuildHighTokenSpeedThreshold:   &buildHighTokenSpeedThreshold,
-			BuildHighTokenSpeedOverheadMS:  &buildHighTokenSpeedOverheadMS,
-			BuildHighTokenSpeedModelIDs:    append([]string(nil), value.Routing.BuildHighTokenSpeedModelIDs...),
+			MarkBuildChatDeniedAsReauth:     value.Routing.MarkBuildChatDeniedAsReauth,
+			PreferFreeBuild:                 value.Routing.PreferFreeBuild,
+			AccountIsolatedConnections:      &accountIsolatedConnections,
+			BuildHighTokenSpeedAutoDisable:  &buildHighTokenSpeedAutoDisable,
+			BuildHighTokenSpeedThreshold:    &buildHighTokenSpeedThreshold,
+			BuildHighTokenSpeedOverheadMS:   &buildHighTokenSpeedOverheadMS,
+			BuildHighTokenSpeedModelIDs:     append([]string(nil), value.Routing.BuildHighTokenSpeedModelIDs...),
+			BuildUsagePenaltyTokenThreshold: value.Routing.BuildUsagePenaltyTokenThreshold,
 			SegmentedSelector: &settingsdomain.SegmentedSelectorConfig{
 				ActiveEnabled: value.Routing.SegmentedSelectorEnabled,
 				MinCandidates: value.Routing.SegmentedMinCandidates, WindowSize: value.Routing.SegmentedWindowSize,
@@ -616,6 +622,9 @@ func mergeEditable(current config.Config, input EditableConfig) (config.Config, 
 	next.Routing.MaxAttempts = input.Routing.MaxAttempts
 	next.Routing.VideoMaxAttempts = input.Routing.VideoMaxAttempts
 	next.Routing.PreferFreeBuild = input.Routing.PreferFreeBuild
+	if input.Routing.BuildUsagePenaltyTokenThresholdProvided {
+		next.Routing.BuildUsagePenaltyTokenThreshold = input.Routing.BuildUsagePenaltyTokenThreshold
+	}
 	if input.Routing.AccountIsolatedConnectionsProvided {
 		next.Routing.AccountIsolatedConnections = input.Routing.AccountIsolatedConnections
 	}
@@ -740,8 +749,8 @@ func toEditable(cfg config.Config) EditableConfig {
 			BaseURL: cfg.Provider.Build.BaseURL, FallbackBaseURL: config.NormalizeBuildFallbackBaseURL(cfg.Provider.Build.FallbackBaseURL),
 			ClientVersion: cfg.Provider.Build.ClientVersion, ClientIdentifier: cfg.Provider.Build.ClientIdentifier,
 			TokenAuth: cfg.Provider.Build.TokenAuth, UserAgent: cfg.Provider.Build.UserAgent,
-			ResponseHeaderTimeout: cfg.Provider.Build.ResponseHeaderTimeout.String(),
-			StreamIdleTimeout:     cfg.Provider.Build.StreamIdleTimeout.String(),
+			ResponseHeaderTimeout:         cfg.Provider.Build.ResponseHeaderTimeout.String(),
+			StreamIdleTimeout:             cfg.Provider.Build.StreamIdleTimeout.String(),
 			StreamFirstCharTimeoutEnabled: cfg.Provider.Build.StreamFirstCharTimeoutEnabled,
 			StreamFirstCharTimeout:        cfg.Provider.Build.StreamFirstCharTimeout.String(),
 		},
@@ -777,19 +786,21 @@ func toEditable(cfg config.Config) EditableConfig {
 		Routing: RoutingConfig{
 			StickyTTL: cfg.Routing.StickyTTL.String(), CooldownBase: cfg.Routing.CooldownBase.String(),
 			CooldownMax: cfg.Routing.CooldownMax.String(), CapacityWait: cfg.Routing.CapacityWait.String(), MaxAttempts: cfg.Routing.MaxAttempts, VideoMaxAttempts: cfg.Routing.VideoMaxAttempts,
-			MarkBuildChatDeniedAsReauth:            cfg.Routing.MarkBuildChatDeniedAsReauth,
-			MarkBuildChatDeniedAsReauthProvided:    true,
-			PreferFreeBuild:                        cfg.Routing.PreferFreeBuild,
-			AccountIsolatedConnections:             cfg.Routing.AccountIsolatedConnections,
-			AccountIsolatedConnectionsProvided:     true,
-			BuildHighTokenSpeedAutoDisable:         cfg.Routing.BuildHighTokenSpeedAutoDisable,
-			BuildHighTokenSpeedAutoDisableProvided: true,
-			BuildHighTokenSpeedThreshold:           cfg.Routing.BuildHighTokenSpeedThreshold,
-			BuildHighTokenSpeedThresholdProvided:   true,
-			BuildHighTokenSpeedOverheadMS:          cfg.Routing.BuildHighTokenSpeedOverheadMS,
-			BuildHighTokenSpeedOverheadMSProvided:  true,
-			BuildHighTokenSpeedModelIDs:            append([]string(nil), cfg.Routing.BuildHighTokenSpeedModelIDs...),
-			BuildHighTokenSpeedModelIDsProvided:    true,
+			MarkBuildChatDeniedAsReauth:             cfg.Routing.MarkBuildChatDeniedAsReauth,
+			MarkBuildChatDeniedAsReauthProvided:     true,
+			PreferFreeBuild:                         cfg.Routing.PreferFreeBuild,
+			AccountIsolatedConnections:              cfg.Routing.AccountIsolatedConnections,
+			AccountIsolatedConnectionsProvided:      true,
+			BuildHighTokenSpeedAutoDisable:          cfg.Routing.BuildHighTokenSpeedAutoDisable,
+			BuildHighTokenSpeedAutoDisableProvided:  true,
+			BuildHighTokenSpeedThreshold:            cfg.Routing.BuildHighTokenSpeedThreshold,
+			BuildHighTokenSpeedThresholdProvided:    true,
+			BuildHighTokenSpeedOverheadMS:           cfg.Routing.BuildHighTokenSpeedOverheadMS,
+			BuildHighTokenSpeedOverheadMSProvided:   true,
+			BuildHighTokenSpeedModelIDs:             append([]string(nil), cfg.Routing.BuildHighTokenSpeedModelIDs...),
+			BuildHighTokenSpeedModelIDsProvided:     true,
+			BuildUsagePenaltyTokenThreshold:         cfg.Routing.BuildUsagePenaltyTokenThreshold,
+			BuildUsagePenaltyTokenThresholdProvided: true,
 			SegmentedSelector: SegmentedSelectorConfig{
 				Enabled: cfg.Routing.SegmentedSelectorEnabled, MinCandidates: cfg.Routing.SegmentedMinCandidates,
 				WindowSize: cfg.Routing.SegmentedWindowSize,

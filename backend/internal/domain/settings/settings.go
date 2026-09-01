@@ -145,7 +145,10 @@ type RoutingConfig struct {
 	// 自动禁用速度：speed = (outputTokens + reasoningTokens) * 1000 / (durationMS - overheadMS)
 	// 与审计页不同：审计页用 durationMS - firstTokenMS，且通常只计 outputTokens。
 	BuildHighTokenSpeedOverheadMS *int64
-	SegmentedSelector *SegmentedSelectorConfig
+	// BuildUsagePenaltyTokenThreshold 是 Build Free 账号的 input+output token 调度惩罚阈值。
+	// 0 表示关闭。达到阈值后该账号 24 小时内尽量不被选中。
+	BuildUsagePenaltyTokenThreshold int64
+	SegmentedSelector               *SegmentedSelectorConfig
 }
 
 type SegmentedSelectorConfig struct {

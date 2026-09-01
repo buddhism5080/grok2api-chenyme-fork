@@ -16,6 +16,7 @@ type candidateScore struct {
 	webCatalogSupport bool
 	tier              int
 	preferFreeBuild   bool
+	usagePenalized    bool
 	quotaKnown        bool
 	quotaAvailable    bool
 	billingFresh      bool
@@ -84,6 +85,9 @@ func candidateScoreBetter(values []account.RoutingCandidate, leftScore, rightSco
 	}
 	if leftScore.quotaKnown != rightScore.quotaKnown {
 		return leftScore.quotaKnown
+	}
+	if leftScore.usagePenalized != rightScore.usagePenalized {
+		return !leftScore.usagePenalized
 	}
 	if leftScore.preferFreeBuild != rightScore.preferFreeBuild {
 		return leftScore.preferFreeBuild
@@ -195,6 +199,7 @@ func (s *Selector) planCandidateIndexesWithHints(ctx context.Context, values []a
 			index: index, tier: tierOrderRank(tierOrder, candidate.Credential.WebTier),
 			webCatalogSupport: candidate.Credential.Provider == account.ProviderWeb && len(tierOrder) > 0 && webTierInOrder(tierOrder, candidate.Credential.WebTier),
 			preferFreeBuild:   preferFreeBuild && candidate.IsKnownFreeBuild(),
+			usagePenalized:    s.usagePenalty.Penalized(candidate.Credential.ID, now),
 			inFlight:          inFlight[position], lastSelected: s.lastSelectedAt[candidate.Credential.ID],
 		}
 		// 只有真实上游快照能够证明账号具备该模式额度。历史默认值和

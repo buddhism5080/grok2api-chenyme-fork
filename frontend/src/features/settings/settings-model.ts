@@ -175,6 +175,7 @@ export const settingsSchema = z.object({
         context.addIssue({ code: "custom", message: "invalid" });
       }
     }),
+    buildUsagePenaltyTokenThreshold: z.number().int().min(0).max(1_000_000_000_000),
     segmentedSelector: z.object({
       enabled: z.boolean(),
       minCandidates: z.number().int().min(100).max(1_000_000),
@@ -248,6 +249,7 @@ export function toSettingsForm(config: SettingsConfigDTO): SettingsForm {
       buildHighTokenSpeedThreshold: config.routing.buildHighTokenSpeedThreshold,
       buildHighTokenSpeedOverheadMS: config.routing.buildHighTokenSpeedOverheadMS,
       buildHighTokenSpeedModelIDs: (config.routing.buildHighTokenSpeedModelIDs ?? []).join("\n"),
+      buildUsagePenaltyTokenThreshold: config.routing.buildUsagePenaltyTokenThreshold ?? 0,
       segmentedSelector: config.routing.segmentedSelector,
     },
     audit: {
@@ -301,6 +303,7 @@ export function toSettingsDTO(config: SettingsForm): SettingsConfigDTO {
       buildHighTokenSpeedThreshold: config.routing.buildHighTokenSpeedThreshold,
       buildHighTokenSpeedOverheadMS: config.routing.buildHighTokenSpeedOverheadMS,
       buildHighTokenSpeedModelIDs: parseModelIDs(config.routing.buildHighTokenSpeedModelIDs),
+      buildUsagePenaltyTokenThreshold: config.routing.buildUsagePenaltyTokenThreshold,
       segmentedSelector: config.routing.segmentedSelector,
     },
     audit: {
