@@ -1301,3 +1301,50 @@ func TestForwardResponsePreservesTruncatedRateLimitDiagnostic(t *testing.T) {
 		t.Fatalf("diagnostic = %#v", response.Diagnostic)
 	}
 }
+
+func TestForwardResponseGuardsNativeResponsesOutputLoop(t *testing.T) {
+	cipher, err := security.NewCipher(base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := cipher.Encrypt("access-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := loopingResponsesOutputSSE("loop", 20)
+	adapter := NewAdapter(Config{BaseURL: "https://cli-chat-proxy.grok.com/v1"}, cipher)
+	adapter.http.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK, Status: "200 OK",
+			Header:  http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:    io.NopCloser(strings.NewReader(stream)),
+			Request: request,
+		}, nil
+	})
+	response, err := adapter.ForwardResponse(context.Background(), provider.ResponseResourceRequest{
+		Credential: account.Credential{Provider: account.ProviderBuild, EncryptedAccessToken: encrypted},
+		Method:     http.MethodPost, Path: "/responses", Model: "grok-4.6",
+		Streaming: true, Operation: conversation.OperationResponses,
+		Body: []byte(`{"model":"grok-4.6","input":"hello","stream":true}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	_, readErr := io.ReadAll(response.Body)
+	if readErr == nil || !errors.Is(readErr, neterror.ErrUpstreamOutputLoop) {
+		t.Fatalf("native Responses must use the same output-loop guard as Anthropic, err=%v", readErr)
+	}
+}
+
+func loopingResponsesOutputSSE(delta string, count int) string {
+	encoded, _ := json.Marshal(delta)
+	var b strings.Builder
+	b.WriteString("event: response.created\ndata: {\"type\":\"response.created\"}\n\n")
+	for i := 0; i < count; i++ {
+		b.WriteString("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":")
+		b.Write(encoded)
+		b.WriteString("}\n\n")
+	}
+	return b.String()
+}

@@ -429,6 +429,7 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 	if responsesOperation && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if request.Streaming {
 			resp.Body = toolCompatibility.normalizeResponseStream(resp.Body)
+			resp.Body = conversation.ConvertResponseStream(resp.Body, conversation.OperationResponses)
 			resp.Header.Del("Content-Length")
 			resp.Header.Set("Content-Type", "text/event-stream")
 		} else if toolCompatibility != nil {
