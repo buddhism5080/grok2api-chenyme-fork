@@ -16,13 +16,15 @@ import (
 const (
 	maxDeferredSearchTextBytes = 8 << 20
 
-	// Period 1/2/3 trip after 10/20/30 deltas of that cycle (not 10 of each
-	// item). Content and reasoning use the same table.
-	contentDoomLoopMaxPeriod    = 3
-	contentDoomLoopPeriod1Total = 10
-	contentDoomLoopPeriod2Total = 20
-	contentDoomLoopPeriod3Total = 30
-	contentDoomLoopTotal        = contentDoomLoopPeriod3Total
+	// Period p∈[1,64] trips after 10 cycles (10*p deltas). The hash window
+	// holds at most 64*10 units so a 64-delta sentence can still be seen.
+	contentDoomLoopMaxPeriod    = 64
+	contentDoomLoopCycleRepeats = 10
+	contentDoomLoopWindow       = contentDoomLoopMaxPeriod * contentDoomLoopCycleRepeats
+	contentDoomLoopPeriod1Total = contentDoomLoopCycleRepeats * 1
+	contentDoomLoopPeriod2Total = contentDoomLoopCycleRepeats * 2
+	contentDoomLoopPeriod3Total = contentDoomLoopCycleRepeats * 3
+	contentDoomLoopTotal        = contentDoomLoopWindow
 )
 
 // ConvertResponseStream 将 Responses SSE 转换为 Chat Completions 或 Anthropic Messages SSE。
@@ -85,8 +87,8 @@ type streamConverter struct {
 // streamRepeatTracker 在协议转换、缓冲和 stop filter 之前跟踪上游增量，
 // 避免任一下游路径绕过循环保护。
 type streamRepeatTracker struct {
-	contentWindow   []string
-	reasoningWindow []string
+	contentWindow   []uint64
+	reasoningWindow []uint64
 }
 
 // streamPipeReadCloser ensures a downstream cancellation immediately closes the
@@ -807,7 +809,7 @@ func (t *streamRepeatTracker) trackContent(delta string) error {
 	if delta == "" {
 		return nil
 	}
-	t.contentWindow = appendCycleWindow(t.contentWindow, delta)
+	t.contentWindow = appendCycleWindow(t.contentWindow, hashCycleDelta(delta))
 	if period := deltaCyclePeriod(t.contentWindow); period > 0 {
 		return fmt.Errorf("%w (content cycle period %d over %d deltas)", neterror.ErrUpstreamOutputLoop, period, cycleTripTotal(period))
 	}
@@ -818,48 +820,51 @@ func (t *streamRepeatTracker) trackReasoning(delta, message string) error {
 	if delta == "" {
 		return nil
 	}
-	t.reasoningWindow = appendCycleWindow(t.reasoningWindow, delta)
+	t.reasoningWindow = appendCycleWindow(t.reasoningWindow, hashCycleDelta(delta))
 	if period := deltaCyclePeriod(t.reasoningWindow); period > 0 {
 		return fmt.Errorf("%w: %s (cycle period %d over %d deltas)", neterror.ErrUpstreamOutputLoop, message, period, cycleTripTotal(period))
 	}
 	return nil
 }
 
-func appendCycleWindow(window []string, delta string) []string {
-	window = append(window, delta)
-	if len(window) > contentDoomLoopPeriod3Total {
-		return append([]string(nil), window[len(window)-contentDoomLoopPeriod3Total:]...)
+func hashCycleDelta(delta string) uint64 {
+	var hash uint64 = 14695981039346656037
+	for i := 0; i < len(delta); i++ {
+		hash ^= uint64(delta[i])
+		hash *= 1099511628211
+	}
+	return hash
+}
+
+func appendCycleWindow(window []uint64, hash uint64) []uint64 {
+	window = append(window, hash)
+	if len(window) > contentDoomLoopWindow {
+		return append([]uint64(nil), window[len(window)-contentDoomLoopWindow:]...)
 	}
 	return window
 }
 
 func cycleTripTotal(period int) int {
-	switch period {
-	case 1:
-		return contentDoomLoopPeriod1Total
-	case 2:
-		return contentDoomLoopPeriod2Total
-	case 3:
-		return contentDoomLoopPeriod3Total
-	default:
+	if period < 1 || period > contentDoomLoopMaxPeriod {
 		return 0
 	}
+	return period * contentDoomLoopCycleRepeats
 }
 
-func deltaCyclePeriod(deltas []string) int {
+func deltaCyclePeriod(hashes []uint64) int {
 	for period := 1; period <= contentDoomLoopMaxPeriod; period++ {
 		total := cycleTripTotal(period)
-		if len(deltas) < total {
+		if len(hashes) < total {
 			continue
 		}
-		if cycleWindowIsPeriodic(deltas[len(deltas)-total:], period) {
+		if cycleWindowIsPeriodic(hashes[len(hashes)-total:], period) {
 			return period
 		}
 	}
 	return 0
 }
 
-func cycleWindowIsPeriodic(window []string, period int) bool {
+func cycleWindowIsPeriodic(window []uint64, period int) bool {
 	if period < 1 || len(window) < period {
 		return false
 	}
