@@ -181,6 +181,16 @@ func newHTTPUpstreamFailure(status int, body []byte, accountID uint64, accountNa
 		failure.Code = "upstream_server_error"
 		failure.PublicMessage = "上游服务暂时异常"
 	}
+	if isPromptTooLong(metadataText) {
+		failure.Code = "context_length_exceeded"
+		failure.RequestScopedForbidden = true
+		failure.AccountScoped = false
+		if upstreamMessage != "" {
+			failure.PublicMessage = promptTooLongClientMessage(upstreamMessage)
+		} else {
+			failure.PublicMessage = "prompt is too long"
+		}
+	}
 	fingerprintPart := normalizeFailureCode(firstNonEmptyFailure(upstreamCode, upstreamType, upstreamMessage))
 	if fingerprintPart == "" {
 		fingerprintPart = "unknown"
@@ -286,6 +296,33 @@ func isRequestScopedForbidden(upstreamCode, text string) bool {
 
 func isDPoPProofRequired(upstreamCode string) bool {
 	return provider.IsDPoPProofRequiredText(upstreamCode)
+}
+
+func isPromptTooLong(text string) bool {
+	lower := strings.ToLower(text)
+	for _, marker := range []string{
+		"prompt is too long",
+		"maximum prompt length",
+		"maximum context length",
+		"context_length_exceeded",
+		"too long for this model",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func promptTooLongClientMessage(message string) string {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return "prompt is too long"
+	}
+	if strings.Contains(strings.ToLower(message), "prompt is too long") {
+		return message
+	}
+	return "prompt is too long: " + message
 }
 
 func isDefinitiveAccountBlock(text string) bool {

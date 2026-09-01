@@ -1109,7 +1109,7 @@ func TestCopyStreamWritesTerminalOnOutputLoop(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			context, _ := gin.CreateTestContext(recorder)
-			_, err := copyStreamWithFallbackModel(context.Writer, &outputLoopErrorReader{}, test.protocol, nil, "grok-test")
+			_, err := copyStreamWithFallbackModel(context.Writer, &outputLoopErrorReader{}, test.protocol, nil, "grok-test", "")
 			if !errors.Is(err, errUpstreamStreamRead) || !errors.Is(err, neterror.ErrUpstreamOutputLoop) {
 				t.Fatalf("copy error = %v", err)
 			}
@@ -1730,6 +1730,38 @@ func TestWriteResultUpstreamCutStaysUpstreamInterrupted(t *testing.T) {
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/", nil))
 	if recorder.Code != http.StatusOK || finalCode != "upstream_stream_interrupted" {
 		t.Fatalf("status=%d finalize=%q body=%q", recorder.Code, finalCode, recorder.Body.String())
+	}
+}
+
+func TestWriteProtocolResultMapsEventStreamJSONPromptTooLongWithoutCopyStream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewHandler(nil, nil, 1<<20)
+	body := `{"code":"invalid-argument","error":"This model's maximum prompt length is 500000 but the request contains 527332 tokens."}`
+	var finalCode string
+	recorded := false
+	result := &gateway.Result{
+		StatusCode: http.StatusBadRequest,
+		Status:     "400 Bad Request",
+		Header:     http.Header{"Content-Type": {"text/event-stream"}, "Content-Length": {fmt.Sprintf("%d", len(body))}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		RecordStreamFailure: func(gateway.StreamFailureDiagnostic) {
+			recorded = true
+		},
+		Finalize: func(_ gateway.Usage, _, code string) {
+			finalCode = code
+		},
+	}
+	router := gin.New()
+	router.GET("/", func(c *gin.Context) {
+		handler.writeAnthropicResult(c, result, true)
+	})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+	if recorder.Code != http.StatusBadRequest || recorded || finalCode != "context_length_exceeded" {
+		t.Fatalf("status=%d recorded=%v final=%q body=%s", recorder.Code, recorded, finalCode, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"type":"invalid_request_error"`) || !strings.Contains(recorder.Body.String(), "prompt is too long") || strings.Contains(recorder.Body.String(), "upstream_stream_incomplete") {
+		t.Fatalf("body=%s", recorder.Body.String())
 	}
 }
 

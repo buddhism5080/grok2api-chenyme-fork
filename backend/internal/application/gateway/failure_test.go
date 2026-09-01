@@ -187,6 +187,24 @@ func TestClassifyUpstreamHTTPErrorInvalidArgument(t *testing.T) {
 	}
 }
 
+func TestClassifyUpstreamHTTPErrorPromptTooLong(t *testing.T) {
+	body := []byte(`{"code":"invalid-argument","error":"This model's maximum prompt length is 500000 but the request contains 527332 tokens."}`)
+	code, message := ClassifyUpstreamHTTPError(http.StatusBadRequest, body)
+	if code != "context_length_exceeded" {
+		t.Fatalf("code=%q", code)
+	}
+	if !strings.Contains(message, "prompt is too long") || !strings.Contains(message, "527332") || !strings.Contains(message, "500000") {
+		t.Fatalf("message=%q", message)
+	}
+	failure := newHTTPUpstreamFailure(http.StatusBadRequest, body, 42, "build")
+	if !failure.RequestScopedForbidden || failure.AccountScoped || failure.Code != "context_length_exceeded" {
+		t.Fatalf("failure = %#v", failure)
+	}
+	if !isPromptTooLong(failure.PublicMessage) {
+		t.Fatalf("rewritten message should still match prompt-too-long: %q", failure.PublicMessage)
+	}
+}
+
 func TestHTTPUpstreamFailureClassifiesDPoPRequirementAsSystemic(t *testing.T) {
 	failure := newHTTPUpstreamFailure(http.StatusForbidden, []byte(`{"code":"unauthorized:dpop-required","error":"DPoP proof required but was not verified."}`), 42, "console")
 	if failure.AccountScoped || failure.CredentialRejected || !failure.RequestScopedForbidden {
