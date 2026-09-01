@@ -482,6 +482,15 @@ type ModelQuotaBlock struct {
 	UpdatedAt     time.Time
 }
 
+// BuildUsagePenalty is a 24h scheduling latch for Grok Build Free accounts
+// whose observed input+output tokens reached the configured threshold.
+type BuildUsagePenalty struct {
+	AccountID    uint64
+	Tokens       int64
+	PenaltyUntil time.Time
+	UpdatedAt    time.Time
+}
+
 // EgressLeaseBlock temporarily removes one account-bound proxy lease from
 // routing without changing the account's health or disabling the physical
 // egress node shared by other leases.

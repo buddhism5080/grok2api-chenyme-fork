@@ -145,6 +145,7 @@ export const settingsSchema = z.object({
     preferFreeBuild: z.boolean(),
     markBuildChatDeniedAsReauth: z.boolean(),
     accountIsolatedConnections: z.boolean(),
+    buildUsagePenaltyTokenThreshold: z.number().int().min(0).max(1_000_000_000_000),
     segmentedSelector: z.object({
       enabled: z.boolean(),
       minCandidates: z.number().int().min(100).max(1_000_000),
@@ -213,6 +214,7 @@ export function toSettingsForm(config: SettingsConfigDTO): SettingsForm {
       preferFreeBuild: config.routing.preferFreeBuild,
       markBuildChatDeniedAsReauth: config.routing.markBuildChatDeniedAsReauth,
       accountIsolatedConnections: config.routing.accountIsolatedConnections,
+      buildUsagePenaltyTokenThreshold: config.routing.buildUsagePenaltyTokenThreshold ?? 0,
       segmentedSelector: config.routing.segmentedSelector,
     },
     audit: {
@@ -262,6 +264,7 @@ export function toSettingsDTO(config: SettingsForm): SettingsConfigDTO {
       preferFreeBuild: config.routing.preferFreeBuild,
       markBuildChatDeniedAsReauth: config.routing.markBuildChatDeniedAsReauth,
       accountIsolatedConnections: config.routing.accountIsolatedConnections,
+      buildUsagePenaltyTokenThreshold: config.routing.buildUsagePenaltyTokenThreshold,
       segmentedSelector: config.routing.segmentedSelector,
     },
     audit: {

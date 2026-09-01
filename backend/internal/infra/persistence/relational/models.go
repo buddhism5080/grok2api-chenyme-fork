@@ -243,6 +243,16 @@ type accountModelQuotaBlockModel struct {
 
 func (accountModelQuotaBlockModel) TableName() string { return "account_model_quota_blocks" }
 
+type accountBuildUsagePenaltyModel struct {
+	AccountID    uint64        `gorm:"primaryKey"`
+	Tokens       int64         `gorm:"not null;default:0"`
+	PenaltyUntil *time.Time    `gorm:"index:idx_account_build_usage_penalties_until"`
+	UpdatedAt    time.Time     `gorm:"not null"`
+	Account      *accountModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+func (accountBuildUsagePenaltyModel) TableName() string { return "account_build_usage_penalties" }
+
 type accountEgressLeaseBlockModel struct {
 	AccountID     uint64           `gorm:"primaryKey"`
 	NodeID        uint64           `gorm:"primaryKey"`

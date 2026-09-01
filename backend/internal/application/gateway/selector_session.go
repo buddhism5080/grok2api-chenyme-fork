@@ -234,7 +234,7 @@ func (session *selectionSession) acquireNormal(ctx context.Context, excluded map
 		if err != nil {
 			return nil, fmt.Errorf("读取会话粘滞状态: %w", err)
 		}
-		if ok && !session.candidateExcluded(excluded, stickyID) {
+		if ok && !session.candidateExcluded(excluded, stickyID) && !session.selector.usagePenalty.Penalized(stickyID, time.Now().UTC()) {
 			for _, index := range session.normalCandidates {
 				candidate := session.values[index]
 				if candidate.Credential.ID != stickyID {

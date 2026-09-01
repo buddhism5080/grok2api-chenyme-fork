@@ -110,7 +110,10 @@ type RoutingConfig struct {
 	// AccountIsolatedConnections is optional so persisted payloads written by
 	// older releases do not silently override a value supplied by config.yaml.
 	AccountIsolatedConnections *bool
-	SegmentedSelector          *SegmentedSelectorConfig
+	// BuildUsagePenaltyTokenThreshold 是 Build Free 账号的 input+output token 调度惩罚阈值。
+	// 0 表示关闭。达到阈值后该账号 24 小时内尽量不被选中。
+	BuildUsagePenaltyTokenThreshold int64
+	SegmentedSelector               *SegmentedSelectorConfig
 }
 
 type SegmentedSelectorConfig struct {

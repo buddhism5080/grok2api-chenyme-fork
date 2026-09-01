@@ -352,6 +352,7 @@ type Selector struct {
 	capacityWait           time.Duration
 	preferFreeBuild        bool
 	excludeBuildBotFlagged bool
+	usagePenalty           *buildUsagePenaltyBook
 	segmentedConfig        segmentedSelectorConfig
 	segmentedState         segmentedSelectorState
 	configMu               sync.RWMutex
@@ -390,7 +391,9 @@ func NewSelector(accounts repository.AccountRepository, concurrency repository.C
 	if len(capacityWait) > 0 && capacityWait[0] > 0 {
 		wait = capacityWait[0]
 	}
-	return &Selector{accounts: accounts, concurrency: concurrency, sticky: sticky, tierOrders: tierOrders, stickyTTL: stickyTTL, cooldownBase: cooldownBase, cooldownMax: cooldownMax, capacityWait: wait, leaseWake: make(chan struct{}), logger: slog.Default(), lastSelectedAt: make(map[uint64]time.Time), lastSuccessAt: make(map[uint64]time.Time), healthOverrides: make(map[uint64]routingHealthOverride), quotaConsumed: make(map[quotaConsumptionKey]int), staleFallbackLoggedAt: make(map[string]time.Time), candidates: make(map[candidateCacheKey]candidateSnapshot), routingBases: make(map[routingBaseCacheKey]routingBaseSnapshot), routingOverlays: make(map[routingOverlayCacheKey]routingOverlaySnapshot), routingAccountProvider: make(map[uint64]account.Provider), baseProviderVersion: make(map[account.Provider]uint64), overlayProviderVersion: make(map[account.Provider]uint64), concurrencySnapshots: resultcache.New[[32]byte, map[string]int](maxConcurrencySnapshots, concurrencySnapshotTTL)}
+	selector := &Selector{accounts: accounts, concurrency: concurrency, sticky: sticky, tierOrders: tierOrders, stickyTTL: stickyTTL, cooldownBase: cooldownBase, cooldownMax: cooldownMax, capacityWait: wait, leaseWake: make(chan struct{}), logger: slog.Default(), lastSelectedAt: make(map[uint64]time.Time), lastSuccessAt: make(map[uint64]time.Time), healthOverrides: make(map[uint64]routingHealthOverride), quotaConsumed: make(map[quotaConsumptionKey]int), staleFallbackLoggedAt: make(map[string]time.Time), candidates: make(map[candidateCacheKey]candidateSnapshot), routingBases: make(map[routingBaseCacheKey]routingBaseSnapshot), routingOverlays: make(map[routingOverlayCacheKey]routingOverlaySnapshot), routingAccountProvider: make(map[uint64]account.Provider), baseProviderVersion: make(map[account.Provider]uint64), overlayProviderVersion: make(map[account.Provider]uint64), concurrencySnapshots: resultcache.New[[32]byte, map[string]int](maxConcurrencySnapshots, concurrencySnapshotTTL), usagePenalty: newBuildUsagePenaltyBook()}
+	selector.loadUsagePenalties()
+	return selector
 }
 
 // SetLogger wires the application logger into routing degradation diagnostics.
@@ -417,6 +420,62 @@ func (s *Selector) UpdatePreferFreeBuild(value bool) {
 	s.configMu.Lock()
 	s.preferFreeBuild = value
 	s.configMu.Unlock()
+}
+
+// UpdateBuildUsagePenaltyTokenThreshold 热更新 Build Free 用量调度惩罚阈值。0 表示关闭。
+func (s *Selector) UpdateBuildUsagePenaltyTokenThreshold(threshold int64) {
+	if s.usagePenalty == nil {
+		s.usagePenalty = newBuildUsagePenaltyBook()
+	}
+	s.usagePenalty.UpdateThreshold(threshold)
+}
+
+// RecordBuildUsage accumulates Build request tokens and latches a 24h soft
+// scheduling penalty when a known Free account crosses the configured threshold.
+func (s *Selector) RecordBuildUsage(candidate account.RoutingCandidate, input, output int64, now time.Time) {
+	if s == nil || s.usagePenalty == nil {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	latched := s.usagePenalty.Record(candidate, input, output, now)
+	if latched && s.sticky != nil {
+		_ = s.sticky.DeleteByAccount(context.Background(), candidate.Credential.ID)
+	}
+	s.persistUsagePenalty(candidate.Credential.ID, now)
+}
+
+func (s *Selector) loadUsagePenalties() {
+	if s == nil || s.usagePenalty == nil {
+		return
+	}
+	store, ok := s.accounts.(buildUsagePenaltyStore)
+	if !ok {
+		return
+	}
+	values, err := store.ListBuildUsagePenalties(context.Background())
+	if err != nil {
+		return
+	}
+	s.usagePenalty.Load(values, time.Now().UTC())
+}
+
+func (s *Selector) persistUsagePenalty(accountID uint64, now time.Time) {
+	if accountID == 0 || s.usagePenalty == nil {
+		return
+	}
+	store, ok := s.accounts.(buildUsagePenaltyStore)
+	if !ok {
+		return
+	}
+	entry, ok := s.usagePenalty.snapshot(accountID)
+	if !ok {
+		return
+	}
+	_ = store.UpsertBuildUsagePenalty(context.Background(), account.BuildUsagePenalty{
+		AccountID: accountID, Tokens: entry.Tokens, PenaltyUntil: entry.PenaltyUntil, UpdatedAt: now,
+	})
 }
 
 // UpdateSegmentedSelector changes the large-pool bounded planner policy.
@@ -665,6 +724,9 @@ func (s *Selector) acquire(ctx context.Context, provider account.Provider, model
 		}
 		if ok {
 			candidate, eligible := routingCandidateByID(values, normalCandidates, stickyID)
+			if eligible && s.usagePenalty.Penalized(stickyID, now) {
+				eligible = false
+			}
 			if eligible {
 				stickyTTL, _, _, _ := s.routingConfig()
 				boundID, bindErr := s.sticky.Bind(ctx, stickyKey, stickyID, now, now.Add(stickyTTL))

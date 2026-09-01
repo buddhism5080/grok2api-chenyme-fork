@@ -50,6 +50,8 @@ func TestUpdatePersistsAppliesAndReportsRestart(t *testing.T) {
 	input.ProviderBuild.ResponseHeaderTimeout = "7m"
 	input.Routing.MaxAttempts = 5
 	input.Routing.PreferFreeBuild = true
+	input.Routing.BuildUsagePenaltyTokenThreshold = 180_000
+	input.Routing.BuildUsagePenaltyTokenThresholdProvided = true
 	input.Routing.SegmentedSelector = SegmentedSelectorConfig{Enabled: true, MinCandidates: 5000, WindowSize: 96}
 	input.Audit.BufferSize = cfg.Audit.BufferSize + 1
 	input.Media.MaxTotalBytes = 2 << 30
@@ -67,7 +69,7 @@ func TestUpdatePersistsAppliesAndReportsRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if applied.Routing.MaxAttempts != 5 || !applied.Routing.PreferFreeBuild || !applied.Routing.SegmentedSelectorEnabled || applied.Routing.SegmentedMinCandidates != 5000 || applied.Routing.SegmentedWindowSize != 96 {
+	if applied.Routing.MaxAttempts != 5 || !applied.Routing.PreferFreeBuild || applied.Routing.BuildUsagePenaltyTokenThreshold != 180_000 || !applied.Routing.SegmentedSelectorEnabled || applied.Routing.SegmentedMinCandidates != 5000 || applied.Routing.SegmentedWindowSize != 96 {
 		t.Fatalf("runtime configuration was not applied: %#v", applied.Routing)
 	}
 	if applied.Server.MaxConcurrentRequests != 2048 {
@@ -98,7 +100,7 @@ func TestUpdatePersistsAppliesAndReportsRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reloaded.Server.MaxConcurrentRequests != 2048 || reloaded.Provider.Build.ResponseHeaderTimeout.Value() != 7*time.Minute || reloaded.Routing.MaxAttempts != 5 || !reloaded.Routing.PreferFreeBuild || !reloaded.Routing.SegmentedSelectorEnabled || reloaded.Routing.SegmentedMinCandidates != 5000 || reloaded.Routing.SegmentedWindowSize != 96 || reloaded.Audit.BufferSize != input.Audit.BufferSize || reloaded.Media.MaxTotalBytes != 2<<30 || reloaded.Media.CleanupThresholdPercent != 75 || reloaded.Batch.SyncConcurrency != 28 || reloaded.Batch.RandomDelay.Value() != 750*time.Millisecond || reloaded.Provider.Console.BaseURL != "https://console.example.com" || reloaded.Provider.Web.ClearanceMode != config.ClearanceModeOnDemand {
+	if reloaded.Server.MaxConcurrentRequests != 2048 || reloaded.Provider.Build.ResponseHeaderTimeout.Value() != 7*time.Minute || reloaded.Routing.MaxAttempts != 5 || !reloaded.Routing.PreferFreeBuild || reloaded.Routing.BuildUsagePenaltyTokenThreshold != 180_000 || !reloaded.Routing.SegmentedSelectorEnabled || reloaded.Routing.SegmentedMinCandidates != 5000 || reloaded.Routing.SegmentedWindowSize != 96 || reloaded.Audit.BufferSize != input.Audit.BufferSize || reloaded.Media.MaxTotalBytes != 2<<30 || reloaded.Media.CleanupThresholdPercent != 75 || reloaded.Batch.SyncConcurrency != 28 || reloaded.Batch.RandomDelay.Value() != 750*time.Millisecond || reloaded.Provider.Console.BaseURL != "https://console.example.com" || reloaded.Provider.Web.ClearanceMode != config.ClearanceModeOnDemand {
 		t.Fatalf("configuration was not persisted")
 	}
 }

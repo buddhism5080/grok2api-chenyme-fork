@@ -1126,6 +1126,13 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 				if !successful || len(attempts) > 0 {
 					record.Attempts = attempts
 				}
+				if usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.TotalTokens > 0 {
+					candidate := accountdomain.RoutingCandidate{Credential: credential, Billing: lease.Billing}
+					if lease.routingCandidate != nil {
+						candidate = *lease.routingCandidate
+					}
+					s.selector.RecordBuildUsage(candidate, usage.InputTokens, usage.OutputTokens, now)
+				}
 				record.CreatedAt = now
 				applyAuditEgress(&record, egressTrace, route.Provider)
 				if supportsStoredResponses && operation == audit.OperationResponses && responseID != "" && successful {

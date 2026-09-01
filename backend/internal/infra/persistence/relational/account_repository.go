@@ -2252,6 +2252,41 @@ func (r *AccountRepository) UpsertModelQuotaBlock(ctx context.Context, value acc
 	return err
 }
 
+func (r *AccountRepository) UpsertBuildUsagePenalty(ctx context.Context, value account.BuildUsagePenalty) error {
+	if value.AccountID == 0 {
+		return repository.ErrConflict
+	}
+	now := time.Now().UTC()
+	if value.UpdatedAt.IsZero() {
+		value.UpdatedAt = now
+	}
+	row := accountBuildUsagePenaltyModel{AccountID: value.AccountID, Tokens: value.Tokens, UpdatedAt: value.UpdatedAt.UTC()}
+	if !value.PenaltyUntil.IsZero() {
+		until := value.PenaltyUntil.UTC()
+		row.PenaltyUntil = &until
+	}
+	return r.db.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "account_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"tokens", "penalty_until", "updated_at"}),
+	}).Create(&row).Error
+}
+
+func (r *AccountRepository) ListBuildUsagePenalties(ctx context.Context) ([]account.BuildUsagePenalty, error) {
+	var rows []accountBuildUsagePenaltyModel
+	if err := r.db.db.WithContext(ctx).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make([]account.BuildUsagePenalty, 0, len(rows))
+	for _, row := range rows {
+		value := account.BuildUsagePenalty{AccountID: row.AccountID, Tokens: row.Tokens, UpdatedAt: row.UpdatedAt.UTC()}
+		if row.PenaltyUntil != nil && !row.PenaltyUntil.IsZero() {
+			value.PenaltyUntil = row.PenaltyUntil.UTC()
+		}
+		result = append(result, value)
+	}
+	return result, nil
+}
+
 func egressLeaseBlockFromModel(row accountEgressLeaseBlockModel) account.EgressLeaseBlock {
 	return account.EgressLeaseBlock{
 		AccountID: row.AccountID, NodeID: row.NodeID, Reason: row.Reason, Version: row.Version,
