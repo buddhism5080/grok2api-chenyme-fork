@@ -321,6 +321,21 @@ func tileDeltas(pattern []string, n int) []string {
 	return out
 }
 
+func numberedPattern(n int) []string {
+	out := make([]string, n)
+	for i := 0; i < n; i++ {
+		out[i] = fmt.Sprintf("d%d", i)
+	}
+	return out
+}
+
+// tapSentenceCycle is the 34-delta repeating unit from NWHqJsZn1uz9_V5m.
+var tapSentenceCycle = []string{
+	"旧", "会话", "的", "占", "位", " UUID", " ", "还", "可能", "躺", "在",
+	" SQ", "Lite", " ", "里", "。", "我", "核对", " resume", " ", "门槛",
+	"会", "不会", "在", "装", "新", "包", "后", "自动", "绕", "开", "它", "。", "\n",
+}
+
 func feedContent(deltas []string) error {
 	var tracker streamRepeatTracker
 	for _, delta := range deltas {
@@ -343,8 +358,14 @@ func TestContentCycleLoopDetectsOneToThreePeriod(t *testing.T) {
 		{name: "20 ab is a loop", deltas: tileDeltas([]string{" \n", " \n\n"}, 20), wantErr: true},
 		{name: "29 abc allowed", deltas: tileDeltas([]string{"a", "b", "c"}, 29)},
 		{name: "30 abc is a loop", deltas: tileDeltas([]string{"a", "b", "c"}, 30), wantErr: true},
-		{name: "30 abcd is not a 1-3 cycle", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 30)},
+		{name: "39 abcd allowed", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 39)},
+		{name: "40 abcd is a loop", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 40), wantErr: true},
 		{name: "real tokens then 20 ab", deltas: append([]string{"界面", "和", "引擎", "都", "改", "好"}, tileDeltas([]string{" \n", " \n\n"}, 20)...), wantErr: true},
+		{name: "339 sentence allowed", deltas: tileDeltas(tapSentenceCycle, 339)},
+		{name: "340 sentence is a loop", deltas: tileDeltas(tapSentenceCycle, 340), wantErr: true},
+		{name: "639 period64 allowed", deltas: tileDeltas(numberedPattern(64), 639)},
+		{name: "640 period64 is a loop", deltas: tileDeltas(numberedPattern(64), 640), wantErr: true},
+		{name: "650 period65 is not covered", deltas: tileDeltas(numberedPattern(65), 650)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -383,7 +404,9 @@ func TestReasoningCycleLoopDetectsOneToThreePeriod(t *testing.T) {
 		{name: "19 ab allowed", deltas: tileDeltas([]string{"so", "wait"}, 19)},
 		{name: "20 ab is a loop", deltas: tileDeltas([]string{"so", "wait"}, 20), wantErr: true},
 		{name: "30 abc is a loop", deltas: tileDeltas([]string{"so", "hmm", "wait"}, 30), wantErr: true},
-		{name: "30 abcd is not a 1-3 cycle", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 30)},
+		{name: "39 abcd allowed", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 39)},
+		{name: "40 abcd is a loop", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 40), wantErr: true},
+		{name: "340 sentence is a loop", deltas: tileDeltas(tapSentenceCycle, 340), wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
