@@ -62,7 +62,7 @@ func TestConvertResponsesStreamTerminatesContentDoomLoop(t *testing.T) {
 func TestConvertResponsesStreamAllowsExactlyContentThreshold(t *testing.T) {
 	stream := repeatSSE("response.output_text.delta",
 		`{"type":"response.output_text.delta","delta":"loop"}`,
-		contentDoomLoopTotal-1)
+		contentDoomLoopPeriod1Total-1)
 	converted, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationChat))
 	if err != nil {
 		t.Fatalf("the content ceiling itself must remain valid: %v", err)
@@ -100,18 +100,18 @@ func TestConvertResponsesStreamProtectsAfterStopSequence(t *testing.T) {
 	}
 }
 
-// 59 identical reasoning deltas remain valid; 60 trips the shared cycle guard.
+// 9 identical reasoning deltas remain valid; 10 trips the shared cycle guard.
 func TestConvertResponsesStreamKeepsRepeatedReasoningBelowThreshold(t *testing.T) {
 	for _, event := range []string{"response.reasoning_text.delta", "response.reasoning_summary_text.delta"} {
 		t.Run(event, func(t *testing.T) {
 			stream := repeatSSE(event,
 				fmt.Sprintf(`{"type":%q,"item_id":"rs_1","delta":"hmm"}`, event),
-				contentDoomLoopTotal-1,
+				contentDoomLoopPeriod1Total-1,
 				`event: response.output_text.delta`,
 				`data: {"type":"response.output_text.delta","delta":"answer"}`, "")
 			converted, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationChat))
 			if err != nil {
-				t.Fatalf("59 reasoning deltas must not be treated as a loop: %v", err)
+				t.Fatalf("9 reasoning deltas must not be treated as a loop: %v", err)
 			}
 			if !strings.Contains(string(converted), `"content":"answer"`) {
 				t.Fatalf("visible answer was lost: %s", converted)
@@ -159,7 +159,7 @@ func TestConvertResponsesStreamTracksSuppressedReasoning(t *testing.T) {
 }
 
 func TestConvertResponsesStreamDoesNotCountFlushedSummaryTwice(t *testing.T) {
-	repeats := contentDoomLoopTotal - 1
+	repeats := contentDoomLoopPeriod1Total - 1
 	lines := []string{
 		`event: response.created`,
 		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
@@ -192,12 +192,12 @@ func TestConvertResponsesStreamSharesReasoningCounterAcrossEventTypes(t *testing
 		`event: response.created`,
 		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
 	}
-	for i := 0; i < contentDoomLoopTotal/2; i++ {
+	for i := 0; i < contentDoomLoopPeriod1Total-1; i++ {
 		lines = append(lines,
 			`event: response.reasoning_summary_text.delta`,
 			`data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_1","delta":"hmm"}`, "")
 	}
-	for i := 0; i <= contentDoomLoopTotal/2; i++ {
+	for i := 0; i < 2; i++ {
 		lines = append(lines,
 			`event: response.reasoning_text.delta`,
 			`data: {"type":"response.reasoning_text.delta","item_id":"rs_1","delta":"hmm"}`, "")
@@ -255,7 +255,7 @@ func TestConvertResponseStreamCloseImmediatelyClosesUpstream(t *testing.T) {
 	}
 }
 
-// A 1-item cycle of 59 identical formatting deltas is still allowed; 60 trips
+// A 1-item cycle of 9 identical formatting deltas is still allowed; 10 trips
 // the content loop guard.
 func TestConvertResponsesStreamKeepsMarkdownRuleAndTableBorders(t *testing.T) {
 	for _, testCase := range []struct{ name, delta string }{
@@ -266,7 +266,7 @@ func TestConvertResponsesStreamKeepsMarkdownRuleAndTableBorders(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			stream := repeatSSE("response.output_text.delta",
 				fmt.Sprintf(`{"type":"response.output_text.delta","delta":%q}`, testCase.delta),
-				contentDoomLoopTotal-1)
+				contentDoomLoopPeriod1Total-1)
 			converted, err := io.ReadAll(ConvertResponseStream(io.NopCloser(strings.NewReader(stream)), OperationChat))
 			if err != nil {
 				t.Fatalf("legitimate repeated formatting must not be treated as a loop: %v", err)
@@ -284,7 +284,7 @@ func TestConvertResponsesStreamDoomLoopCountersResetAndStaySeparate(t *testing.T
 		`event: response.created`,
 		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-4.6","status":"in_progress"}}`, "",
 	}
-	for i := 0; i < contentDoomLoopTotal-1; i++ {
+	for i := 0; i < contentDoomLoopPeriod2Total-1; i++ {
 		delta := "a"
 		if i%2 == 1 {
 			delta = "b"
@@ -293,7 +293,7 @@ func TestConvertResponsesStreamDoomLoopCountersResetAndStaySeparate(t *testing.T
 			`event: response.output_text.delta`,
 			fmt.Sprintf(`data: {"type":"response.output_text.delta","delta":%q}`, delta), "")
 	}
-	for i := 0; i < contentDoomLoopTotal-1; i++ {
+	for i := 0; i < contentDoomLoopPeriod1Total-1; i++ {
 		lines = append(lines,
 			`event: response.reasoning_text.delta`,
 			`data: {"type":"response.reasoning_text.delta","item_id":"rs_1","delta":"hmm"}`, "",
@@ -337,13 +337,14 @@ func TestContentCycleLoopDetectsOneToThreePeriod(t *testing.T) {
 		deltas  []string
 		wantErr bool
 	}{
-		{name: "59 identical allowed", deltas: tileDeltas([]string{"loop"}, 59)},
-		{name: "60 identical is a loop", deltas: tileDeltas([]string{"loop"}, 60), wantErr: true},
-		{name: "59 ab allowed", deltas: tileDeltas([]string{" \n", " \n\n"}, 59)},
-		{name: "60 ab is a loop", deltas: tileDeltas([]string{" \n", " \n\n"}, 60), wantErr: true},
-		{name: "60 abc is a loop", deltas: tileDeltas([]string{"a", "b", "c"}, 60), wantErr: true},
-		{name: "60 abcd is not a 1-3 cycle", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 60)},
-		{name: "real tokens then 60 ab", deltas: append([]string{"界面", "和", "引擎", "都", "改", "好"}, tileDeltas([]string{" \n", " \n\n"}, 60)...), wantErr: true},
+		{name: "9 identical allowed", deltas: tileDeltas([]string{"loop"}, 9)},
+		{name: "10 identical is a loop", deltas: tileDeltas([]string{"loop"}, 10), wantErr: true},
+		{name: "19 ab allowed", deltas: tileDeltas([]string{" \n", " \n\n"}, 19)},
+		{name: "20 ab is a loop", deltas: tileDeltas([]string{" \n", " \n\n"}, 20), wantErr: true},
+		{name: "29 abc allowed", deltas: tileDeltas([]string{"a", "b", "c"}, 29)},
+		{name: "30 abc is a loop", deltas: tileDeltas([]string{"a", "b", "c"}, 30), wantErr: true},
+		{name: "30 abcd is not a 1-3 cycle", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 30)},
+		{name: "real tokens then 20 ab", deltas: append([]string{"界面", "和", "引擎", "都", "改", "好"}, tileDeltas([]string{" \n", " \n\n"}, 20)...), wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -377,12 +378,12 @@ func TestReasoningCycleLoopDetectsOneToThreePeriod(t *testing.T) {
 		deltas  []string
 		wantErr bool
 	}{
-		{name: "59 identical allowed", deltas: tileDeltas([]string{"hmm"}, 59)},
-		{name: "60 identical is a loop", deltas: tileDeltas([]string{"hmm"}, 60), wantErr: true},
-		{name: "59 ab allowed", deltas: tileDeltas([]string{"so", "wait"}, 59)},
-		{name: "60 ab is a loop", deltas: tileDeltas([]string{"so", "wait"}, 60), wantErr: true},
-		{name: "60 abc is a loop", deltas: tileDeltas([]string{"so", "hmm", "wait"}, 60), wantErr: true},
-		{name: "60 abcd is not a 1-3 cycle", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 60)},
+		{name: "9 identical allowed", deltas: tileDeltas([]string{"hmm"}, 9)},
+		{name: "10 identical is a loop", deltas: tileDeltas([]string{"hmm"}, 10), wantErr: true},
+		{name: "19 ab allowed", deltas: tileDeltas([]string{"so", "wait"}, 19)},
+		{name: "20 ab is a loop", deltas: tileDeltas([]string{"so", "wait"}, 20), wantErr: true},
+		{name: "30 abc is a loop", deltas: tileDeltas([]string{"so", "hmm", "wait"}, 30), wantErr: true},
+		{name: "30 abcd is not a 1-3 cycle", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 30)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

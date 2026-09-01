@@ -16,11 +16,13 @@ import (
 const (
 	maxDeferredSearchTextBytes = 8 << 20
 
-	// doomLoopTotal is the number of deltas that must follow a 1–3 item
-	// cycle before the stream is terminated. The count is across the whole
-	// cycle (60 total), not 60 of each item. Content and reasoning share it.
-	contentDoomLoopTotal     = 60
-	contentDoomLoopMaxPeriod = 3
+	// Period 1/2/3 trip after 10/20/30 deltas of that cycle (not 10 of each
+	// item). Content and reasoning use the same table.
+	contentDoomLoopMaxPeriod    = 3
+	contentDoomLoopPeriod1Total = 10
+	contentDoomLoopPeriod2Total = 20
+	contentDoomLoopPeriod3Total = 30
+	contentDoomLoopTotal        = contentDoomLoopPeriod3Total
 )
 
 // ConvertResponseStream 将 Responses SSE 转换为 Chat Completions 或 Anthropic Messages SSE。
@@ -802,7 +804,7 @@ func (t *streamRepeatTracker) trackContent(delta string) error {
 	}
 	t.contentWindow = appendCycleWindow(t.contentWindow, delta)
 	if period := deltaCyclePeriod(t.contentWindow); period > 0 {
-		return fmt.Errorf("%w (content cycle period %d over %d deltas)", neterror.ErrUpstreamOutputLoop, period, contentDoomLoopTotal)
+		return fmt.Errorf("%w (content cycle period %d over %d deltas)", neterror.ErrUpstreamOutputLoop, period, cycleTripTotal(period))
 	}
 	return nil
 }
@@ -813,26 +815,39 @@ func (t *streamRepeatTracker) trackReasoning(delta, message string) error {
 	}
 	t.reasoningWindow = appendCycleWindow(t.reasoningWindow, delta)
 	if period := deltaCyclePeriod(t.reasoningWindow); period > 0 {
-		return fmt.Errorf("%w: %s (cycle period %d over %d deltas)", neterror.ErrUpstreamOutputLoop, message, period, contentDoomLoopTotal)
+		return fmt.Errorf("%w: %s (cycle period %d over %d deltas)", neterror.ErrUpstreamOutputLoop, message, period, cycleTripTotal(period))
 	}
 	return nil
 }
 
 func appendCycleWindow(window []string, delta string) []string {
 	window = append(window, delta)
-	if len(window) > contentDoomLoopTotal {
-		return append([]string(nil), window[len(window)-contentDoomLoopTotal:]...)
+	if len(window) > contentDoomLoopPeriod3Total {
+		return append([]string(nil), window[len(window)-contentDoomLoopPeriod3Total:]...)
 	}
 	return window
 }
 
-func deltaCyclePeriod(deltas []string) int {
-	if len(deltas) < contentDoomLoopTotal {
+func cycleTripTotal(period int) int {
+	switch period {
+	case 1:
+		return contentDoomLoopPeriod1Total
+	case 2:
+		return contentDoomLoopPeriod2Total
+	case 3:
+		return contentDoomLoopPeriod3Total
+	default:
 		return 0
 	}
-	window := deltas[len(deltas)-contentDoomLoopTotal:]
+}
+
+func deltaCyclePeriod(deltas []string) int {
 	for period := 1; period <= contentDoomLoopMaxPeriod; period++ {
-		if cycleWindowIsPeriodic(window, period) {
+		total := cycleTripTotal(period)
+		if len(deltas) < total {
+			continue
+		}
+		if cycleWindowIsPeriodic(deltas[len(deltas)-total:], period) {
 			return period
 		}
 	}

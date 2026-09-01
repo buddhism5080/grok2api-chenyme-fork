@@ -1301,9 +1301,7 @@ func TestForwardResponseGuardsNativeResponsesOutputLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 200 identical deltas is past both the main consecutive-128 ceiling and the
-	// 1–3/60 cycle detector on live/dev, so this assertion stays valid on either.
-	stream := loopingResponsesOutputSSE("loop", 200)
+	stream := loopingResponsesOutputSSE("loop", 20)
 	adapter := NewAdapter(Config{BaseURL: "https://cli-chat-proxy.grok.com/v1"}, cipher)
 	adapter.http.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
