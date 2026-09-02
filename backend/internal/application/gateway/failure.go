@@ -219,6 +219,12 @@ func newTransportUpstreamFailure(err error, accountID uint64, accountName string
 		status, code, message = http.StatusBadGateway, "upstream_response_empty", "上游响应为空"
 	} else if errors.Is(err, errQualityEmptyStream) {
 		status, code, message = http.StatusBadGateway, "upstream_stream_empty", "上游流式响应为空"
+	} else if errors.Is(err, errUpstreamModelAtCapacity) {
+		status, code, message = http.StatusServiceUnavailable, "upstream_model_at_capacity", "上游模型当前容量不足"
+		return &UpstreamFailure{
+			HTTPStatus: status, Code: code, PublicMessage: message,
+			AccountID: accountID, AccountName: accountName, AccountScoped: true, Fingerprint: code, Cause: err,
+		}
 	} else if errors.Is(err, context.DeadlineExceeded) {
 		code, message = "upstream_timeout", "上游服务响应超时"
 	}

@@ -1574,6 +1574,36 @@ attemptLoop:
 			continue
 		}
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			if input.Streaming && credential.Provider == accountdomain.ProviderBuild {
+				prefix, rest, peekErr := peekEmptyCapacityStream(response.Body)
+				if peekErr != nil {
+					if rest != nil {
+						_ = rest.Close()
+					} else {
+						_ = response.Body.Close()
+					}
+					lease.Release()
+					lastErr = peekErr
+					lastFailure = newTransportUpstreamFailure(peekErr, credential.ID, credential.Name)
+					_ = failureAttempts.captureResponse(credential, responseStartedAt, nil, peekErr)
+					if errors.Is(peekErr, errUpstreamModelAtCapacity) {
+						s.logger.Warn("upstream_model_at_capacity_retry", "request_id", input.RequestID, "account_id", credential.ID)
+						if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
+							break
+						}
+						continue
+					}
+					if !isRetryableTransportFailure(credential.Provider, peekErr) {
+						break
+					}
+					s.selector.MarkFailure(ctx, credential, lastFailure.HTTPStatus, 0)
+					if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
+						break
+					}
+					continue
+				}
+				response.Body = newEmptyCapacityReplay(prefix, rest)
+			}
 			s.selector.markSuccess(ctx, credential, lease.QuotaProbe)
 			if qualityHoldEnabled {
 				replay, verdict, peekUsage, _, peekErr := peekQualityStream(ctx, response.Body, qualityProtocolForOperation(operation), holdCfg)
