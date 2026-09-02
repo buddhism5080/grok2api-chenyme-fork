@@ -1655,28 +1655,44 @@ attemptLoop:
 			continue
 		}
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
-			// Wait for first content token before marking success / handing off
-			// to the client. Timeout here can still rotate accounts because no
-			// client headers have been written yet.
+			// Peek before handoff so empty capacity errors can rotate accounts
+			// (and first-char timeout still can) before any client headers.
 			if input.Streaming && credential.Provider == accountdomain.ProviderBuild {
+				waitStarted := time.Now()
+				var prefix []byte
+				var rest io.ReadCloser
+				var waitErr error
 				if deadline := s.buildStreamFirstCharDeadline(); deadline > 0 {
-					waitStarted := time.Now()
-					prefix, rest, waitErr := awaitFirstContentToken(response.Body, deadline, firstTokenKindForOperation(operation))
-					if waitErr != nil {
-						_ = failureAttempts.captureResponse(credential, waitStarted, nil, waitErr)
-						lease.Release()
-						lastErr = waitErr
-						lastFailure = newTransportUpstreamFailure(waitErr, credential.ID, credential.Name)
-						s.selector.MarkFailure(ctx, credential, lastFailure.HTTPStatus, 0)
+					prefix, rest, waitErr = awaitFirstContentToken(response.Body, deadline, firstTokenKindForOperation(operation))
+				} else {
+					prefix, rest, waitErr = peekEmptyCapacityStream(response.Body)
+				}
+				if waitErr != nil {
+					if rest != nil {
+						_ = rest.Close()
+					} else {
+						_ = response.Body.Close()
+					}
+					lease.Release()
+					lastErr = waitErr
+					lastFailure = newTransportUpstreamFailure(waitErr, credential.ID, credential.Name)
+					_ = failureAttempts.captureResponse(credential, waitStarted, nil, waitErr)
+					if errors.Is(waitErr, errUpstreamModelAtCapacity) {
+						s.logger.Warn("upstream_model_at_capacity_retry", "request_id", input.RequestID, "account_id", credential.ID)
 						if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
 							break
 						}
 						continue
 					}
-					response.Body = newPrefixThenRest(prefix, rest)
-					if firstToken != nil {
-						firstToken.mark()
+					s.selector.MarkFailure(ctx, credential, lastFailure.HTTPStatus, 0)
+					if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
+						break
 					}
+					continue
+				}
+				response.Body = newEmptyCapacityReplay(prefix, rest)
+				if firstToken != nil {
+					firstToken.mark()
 				}
 			}
 			s.selector.markSuccess(ctx, credential, lease.QuotaProbe)

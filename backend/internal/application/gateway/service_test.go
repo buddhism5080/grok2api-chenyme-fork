@@ -2932,6 +2932,7 @@ type failoverAdapter struct {
 	resourceStatus         int
 	transportErrorIDs      map[uint64]error
 	stallBody              bool
+	streamBodies           map[uint64]string
 }
 
 type ssoFailureAdapter struct {
@@ -4792,12 +4793,16 @@ func (a *failoverAdapter) ForwardResponse(_ context.Context, request provider.Re
 	resourceStatus := a.resourceStatus
 	transportErr := a.transportErrorIDs[request.Credential.ID]
 	stallBody := a.stallBody
+	streamBody, hasStreamBody := a.streamBodies[request.Credential.ID]
 	a.mu.Unlock()
 	if transportErr != nil {
 		return nil, transportErr
 	}
 	if stallBody {
 		return &provider.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: newStallReadCloser()}, nil
+	}
+	if hasStreamBody {
+		return &provider.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(streamBody))}, nil
 	}
 	status, body := http.StatusOK, "ok"
 	header := make(http.Header)

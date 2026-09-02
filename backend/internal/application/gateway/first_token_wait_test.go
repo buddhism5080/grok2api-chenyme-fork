@@ -76,3 +76,13 @@ func TestAwaitFirstContentTokenSeesChatReasoning(t *testing.T) {
 		t.Fatal("empty prefix")
 	}
 }
+
+func TestAwaitFirstContentTokenRetriesEmptyCapacity(t *testing.T) {
+	_, rest, err := awaitFirstContentToken(io.NopCloser(strings.NewReader(immediateCapacitySSE)), time.Second, firstTokenKindResponses)
+	if rest != nil {
+		_ = rest.Close()
+	}
+	if !errors.Is(err, errUpstreamModelAtCapacity) {
+		t.Fatalf("err = %v, want errUpstreamModelAtCapacity", err)
+	}
+}

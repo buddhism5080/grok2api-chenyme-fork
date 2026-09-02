@@ -92,6 +92,11 @@ func awaitFirstContentToken(body io.ReadCloser, deadline time.Duration, kind fir
 					stopTimer()
 					return buf.Bytes(), body, nil
 				}
+				if isEmptyOutputCapacityPayload(data) {
+					stopTimer()
+					_ = body.Close()
+					return nil, nil, errUpstreamModelAtCapacity
+				}
 			}
 		}
 		if readErr == nil {
