@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -100,6 +102,47 @@ func (s *stallReadCloser) Close() error {
 	case <-s.closed:
 	default:
 		close(s.closed)
+	}
+	return nil
+}
+
+// delayedReadCloser sleeps delay before yielding payload. Close unblocks the
+// wait so a first-char timeout on this attempt cannot leak into the next one.
+type delayedReadCloser struct {
+	delay   time.Duration
+	payload string
+	once    sync.Once
+	reader  *strings.Reader
+	closed  atomic.Bool
+	stop    chan struct{}
+}
+
+func newDelayedReadCloser(delay time.Duration, payload string) *delayedReadCloser {
+	return &delayedReadCloser{delay: delay, payload: payload, stop: make(chan struct{})}
+}
+
+func (d *delayedReadCloser) Read(buffer []byte) (int, error) {
+	if d.closed.Load() {
+		return 0, io.EOF
+	}
+	d.once.Do(func() {
+		timer := time.NewTimer(d.delay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			d.reader = strings.NewReader(d.payload)
+		case <-d.stop:
+		}
+	})
+	if d.closed.Load() || d.reader == nil {
+		return 0, io.EOF
+	}
+	return d.reader.Read(buffer)
+}
+
+func (d *delayedReadCloser) Close() error {
+	if d.closed.CompareAndSwap(false, true) {
+		close(d.stop)
 	}
 	return nil
 }

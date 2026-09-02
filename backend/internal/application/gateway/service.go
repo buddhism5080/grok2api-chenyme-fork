@@ -1662,6 +1662,8 @@ attemptLoop:
 				var prefix []byte
 				var rest io.ReadCloser
 				var waitErr error
+				// Full configured deadline on every account attempt. Do not
+				// subtract time spent on earlier 402/429/capacity/first-char retries.
 				if deadline := s.buildStreamFirstCharDeadline(); deadline > 0 {
 					prefix, rest, waitErr = awaitFirstContentToken(response.Body, deadline, firstTokenKindForOperation(operation))
 				} else {

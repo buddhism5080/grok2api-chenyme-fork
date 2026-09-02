@@ -678,6 +678,71 @@ func TestGatewayFirstCharTimeoutFollowsRoutingMaxAttempts(t *testing.T) {
 	}
 }
 
+func TestGatewayFirstCharTimeoutResetsOnAccountFailover(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "gateway-first-char-reset.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accountRepo := relational.NewAccountRepository(database)
+	modelRepo := relational.NewModelRepository(database)
+	auditRepo := relational.NewAuditRepository(database)
+	responseRepo := relational.NewResponseRepository(database)
+	first, _, err := accountRepo.UpsertByIdentity(ctx, account.Credential{Provider: account.ProviderBuild, Name: "stall", SourceKey: "stall", EncryptedAccessToken: "one", ExpiresAt: time.Now().Add(time.Hour), Enabled: true, AuthStatus: account.AuthStatusActive, Priority: 200, MaxConcurrent: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := accountRepo.UpsertByIdentity(ctx, account.Credential{Provider: account.ProviderBuild, Name: "slow", SourceKey: "slow", EncryptedAccessToken: "two", ExpiresAt: time.Now().Add(time.Hour), Enabled: true, AuthStatus: account.AuthStatusActive, Priority: 100, MaxConcurrent: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const model = "grok-first-char-reset"
+	if err := modelRepo.UpsertDiscovered(ctx, account.ProviderBuild, []string{model}); err != nil {
+		t.Fatal(err)
+	}
+	for _, accountID := range []uint64{first.ID, second.ID} {
+		if err := modelRepo.ReplaceAccountCapabilities(ctx, accountID, []string{model}, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const firstChar = 80 * time.Millisecond
+	const secondDelay = 50 * time.Millisecond
+	successSSE := `data: {"type":"response.output_text.delta","delta":"ok"}` + "\n\n"
+	adapter := &failoverAdapter{
+		stallIDs:     map[uint64]bool{first.ID: true},
+		streamBodies: map[uint64]string{second.ID: successSSE},
+		streamDelays: map[uint64]time.Duration{second.ID: secondDelay},
+	}
+	registry := provider.NewRegistry(adapter)
+	sticky := memory.NewStickyStore()
+	accountService := accountapp.NewService(accountRepo, auditRepo, memory.NewDeviceSessionStore(), sticky, registry, testCipher(t), nil)
+	selector := NewSelector(accountRepo, memory.NewConcurrencyLimiter(), sticky, registry, time.Hour, 30*time.Second, 30*time.Minute)
+	service := NewService(modelRepo, auditRepo, accountService, clientkeyapp.NewService(nil, nil, nil, 60, 4, nil), registry, selector, responseRepo, 3)
+	service.UpdateBuildStreamFirstCharTimeout(firstChar)
+	result, err := service.CreateResponse(ctx, Input{
+		RequestID: "req-first-char-reset", ClientKey: clientkey.Key{ID: 1, Name: "build-key"}, PublicModel: model,
+		Body: []byte(`{"model":"grok-first-char-reset","input":"hello","stream":true}`), Streaming: true,
+	})
+	if err != nil {
+		t.Fatalf("failover after first-char timeout should get a full deadline on the next account: %v", err)
+	}
+	body, readErr := io.ReadAll(result.Body)
+	_ = result.Body.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(body), `"delta":"ok"`) {
+		t.Fatalf("body = %q", body)
+	}
+	if len(adapter.attempts) != 2 || adapter.attempts[0] != first.ID || adapter.attempts[1] != second.ID {
+		t.Fatalf("attempts = %#v", adapter.attempts)
+	}
+}
+
 func TestGatewayNonStreamingEmptyIdleCoolsAccountAndSwitches(t *testing.T) {
 	ctx := context.Background()
 	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "gateway-non-stream-idle.db"))
@@ -2933,6 +2998,8 @@ type failoverAdapter struct {
 	transportErrorIDs      map[uint64]error
 	stallBody              bool
 	streamBodies           map[uint64]string
+	stallIDs               map[uint64]bool
+	streamDelays           map[uint64]time.Duration
 }
 
 type ssoFailureAdapter struct {
@@ -4794,15 +4861,25 @@ func (a *failoverAdapter) ForwardResponse(_ context.Context, request provider.Re
 	transportErr := a.transportErrorIDs[request.Credential.ID]
 	stallBody := a.stallBody
 	streamBody, hasStreamBody := a.streamBodies[request.Credential.ID]
+	stalled := a.stallIDs[request.Credential.ID]
+	delay := a.streamDelays[request.Credential.ID]
 	a.mu.Unlock()
 	if transportErr != nil {
 		return nil, transportErr
 	}
-	if stallBody {
+	if stalled || stallBody {
 		return &provider.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: newStallReadCloser()}, nil
 	}
 	if hasStreamBody {
-		return &provider.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(streamBody))}, nil
+		var body io.ReadCloser = io.NopCloser(strings.NewReader(streamBody))
+		if delay > 0 {
+			body = newDelayedReadCloser(delay, streamBody)
+		}
+		return &provider.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: body}, nil
+	}
+	if delay > 0 {
+		payload := `data: {"type":"response.output_text.delta","delta":"ok"}` + "\n\n"
+		return &provider.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: newDelayedReadCloser(delay, payload)}, nil
 	}
 	status, body := http.StatusOK, "ok"
 	header := make(http.Header)
