@@ -346,6 +346,28 @@ func feedContent(deltas []string) error {
 	return nil
 }
 
+func TestCycleTripTotalScalesRepeatsByPeriod(t *testing.T) {
+	tests := []struct {
+		period int
+		want   int
+	}{
+		{0, 0},
+		{1, 10},
+		{2, 20},
+		{64, 640},
+		{65, 650},
+		{187, 748},
+		{256, 768},
+		{1000, 3000},
+		{1001, 0},
+	}
+	for _, test := range tests {
+		if got := cycleTripTotal(test.period); got != test.want {
+			t.Errorf("cycleTripTotal(%d) = %d, want %d", test.period, got, test.want)
+		}
+	}
+}
+
 func TestContentCycleLoopDetectsOneToThreePeriod(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -365,7 +387,13 @@ func TestContentCycleLoopDetectsOneToThreePeriod(t *testing.T) {
 		{name: "340 sentence is a loop", deltas: tileDeltas(tapSentenceCycle, 340), wantErr: true},
 		{name: "639 period64 allowed", deltas: tileDeltas(numberedPattern(64), 639)},
 		{name: "640 period64 is a loop", deltas: tileDeltas(numberedPattern(64), 640), wantErr: true},
-		{name: "650 period65 is not covered", deltas: tileDeltas(numberedPattern(65), 650)},
+		{name: "649 period65 allowed", deltas: tileDeltas(numberedPattern(65), 649)},
+		{name: "650 period65 is a loop", deltas: tileDeltas(numberedPattern(65), 650), wantErr: true},
+		{name: "747 period187 allowed", deltas: tileDeltas(numberedPattern(187), 747)},
+		{name: "748 period187 is a loop", deltas: tileDeltas(numberedPattern(187), 748), wantErr: true},
+		{name: "2999 period1000 allowed", deltas: tileDeltas(numberedPattern(1000), 2999)},
+		{name: "3000 period1000 is a loop", deltas: tileDeltas(numberedPattern(1000), 3000), wantErr: true},
+		{name: "3000 period1001 is not covered", deltas: tileDeltas(numberedPattern(1001), 3000)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -407,6 +435,7 @@ func TestReasoningCycleLoopDetectsOneToThreePeriod(t *testing.T) {
 		{name: "39 abcd allowed", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 39)},
 		{name: "40 abcd is a loop", deltas: tileDeltas([]string{"a", "b", "c", "d"}, 40), wantErr: true},
 		{name: "340 sentence is a loop", deltas: tileDeltas(tapSentenceCycle, 340), wantErr: true},
+		{name: "748 period187 is a loop", deltas: tileDeltas(numberedPattern(187), 748), wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -16,15 +16,18 @@ import (
 const (
 	maxDeferredSearchTextBytes = 8 << 20
 
-	// Period p∈[1,64] trips after 10 cycles (10*p deltas). The hash window
-	// holds at most 64*10 units so a 64-delta sentence can still be seen.
-	contentDoomLoopMaxPeriod    = 64
-	contentDoomLoopCycleRepeats = 10
-	contentDoomLoopWindow       = contentDoomLoopMaxPeriod * contentDoomLoopCycleRepeats
-	contentDoomLoopPeriod1Total = contentDoomLoopCycleRepeats * 1
-	contentDoomLoopPeriod2Total = contentDoomLoopCycleRepeats * 2
-	contentDoomLoopPeriod3Total = contentDoomLoopCycleRepeats * 3
-	contentDoomLoopTotal        = contentDoomLoopWindow
+	// Period p∈[1,1000]. Repeats scale as clamp(ceil(640/p), 3, 10):
+	// small p stays at 10 cycles; a 187-delta paragraph trips at 4.
+	contentDoomLoopMaxPeriod    = 1000
+	contentDoomLoopMinRepeats   = 3
+	contentDoomLoopMaxRepeats   = 10
+	contentDoomLoopBudget       = 640
+	contentDoomLoopWindow       = contentDoomLoopMaxPeriod * contentDoomLoopMinRepeats
+	contentDoomLoopCycleRepeats = contentDoomLoopMaxRepeats
+	contentDoomLoopPeriod1Total = contentDoomLoopMaxRepeats * 1
+	contentDoomLoopPeriod2Total = contentDoomLoopMaxRepeats * 2
+	contentDoomLoopPeriod3Total = contentDoomLoopMaxRepeats * 3
+	contentDoomLoopTotal        = contentDoomLoopBudget
 )
 
 // ConvertResponseStream 将 Responses SSE 转换为 Chat Completions 或 Anthropic Messages SSE。
@@ -839,11 +842,26 @@ func appendCycleWindow(window []uint64, hash uint64) []uint64 {
 	return window
 }
 
-func cycleTripTotal(period int) int {
+func cycleRepeats(period int) int {
 	if period < 1 || period > contentDoomLoopMaxPeriod {
 		return 0
 	}
-	return period * contentDoomLoopCycleRepeats
+	repeats := (contentDoomLoopBudget + period - 1) / period
+	if repeats < contentDoomLoopMinRepeats {
+		repeats = contentDoomLoopMinRepeats
+	}
+	if repeats > contentDoomLoopMaxRepeats {
+		repeats = contentDoomLoopMaxRepeats
+	}
+	return repeats
+}
+
+func cycleTripTotal(period int) int {
+	repeats := cycleRepeats(period)
+	if repeats == 0 {
+		return 0
+	}
+	return period * repeats
 }
 
 func deltaCyclePeriod(hashes []uint64) int {
