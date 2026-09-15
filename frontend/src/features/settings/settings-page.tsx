@@ -518,6 +518,21 @@ export function SettingsPage() {
               </div>
             </SettingsSection>
 
+            <SettingsSection title={t("settings.accounts.missingReasoningTitle")}>
+              <div className="space-y-0">
+                <SettingsField controlId="accounts-build-missing-reasoning-penalty-enabled" label={t("settings.accounts.buildMissingReasoningPenaltyEnabled")} description={t("settings.accounts.buildMissingReasoningPenaltyEnabledHelp")}>
+                  <Controller control={form.control} name="routing.buildMissingReasoningPenaltyEnabled" render={({ field }) => (
+                    <div className="flex h-9 items-center">
+                      <Switch id="accounts-build-missing-reasoning-penalty-enabled" checked={field.value} onCheckedChange={field.onChange} />
+                    </div>
+                  )} />
+                </SettingsField>
+                <SettingsField controlId="accounts-build-missing-reasoning-penalty-model-ids" label={t("settings.accounts.buildMissingReasoningPenaltyModelIDs")} description={t("settings.accounts.buildMissingReasoningPenaltyModelIDsHelp")} error={form.formState.errors.routing?.buildMissingReasoningPenaltyModelIDs?.message}>
+                  <Textarea id="accounts-build-missing-reasoning-penalty-model-ids" rows={3} disabled={!form.watch("routing.buildMissingReasoningPenaltyEnabled")} placeholder={t("settings.accounts.buildMissingReasoningPenaltyModelIDsPlaceholder")} {...form.register("routing.buildMissingReasoningPenaltyModelIDs")} />
+                </SettingsField>
+              </div>
+            </SettingsSection>
+
             <SettingsSection title={t("settings.accounts.cleanupTitle")}>
               <div className="space-y-0">
                 <SettingsField controlId="accounts-auto-clean-reauth-enabled" label={t("settings.accounts.autoCleanReauthEnabled")} description={t("settings.accounts.autoCleanReauthEnabledHelp")}>

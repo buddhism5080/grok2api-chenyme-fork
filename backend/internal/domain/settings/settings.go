@@ -148,7 +148,12 @@ type RoutingConfig struct {
 	// BuildUsagePenaltyTokenThreshold 是 Build Free 账号的 input+output token 调度惩罚阈值。
 	// 0 表示关闭。达到阈值后该账号 24 小时内尽量不被选中。
 	BuildUsagePenaltyTokenThreshold int64
-	SegmentedSelector               *SegmentedSelectorConfig
+	// BuildMissingReasoningPenaltyEnabled 为 true 时，Build 指定模型在 HTTP 200、
+	// outputTokens>20 且 reasoningTokens=0 时对该账号施加 24h 调度惩罚并清除会话粘滞。
+	BuildMissingReasoningPenaltyEnabled *bool
+	// BuildMissingReasoningPenaltyModelIDs 需要监控的公开模型 ID；空列表表示不生效。
+	BuildMissingReasoningPenaltyModelIDs []string
+	SegmentedSelector                    *SegmentedSelectorConfig
 }
 
 type SegmentedSelectorConfig struct {

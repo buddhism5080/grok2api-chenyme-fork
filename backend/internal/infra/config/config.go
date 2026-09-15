@@ -239,13 +239,18 @@ type RoutingConfig struct {
 	BuildHighTokenSpeedOverheadMS int64 `yaml:"buildHighTokenSpeedOverheadMS"`
 	// BuildUsagePenaltyTokenThreshold 是 Build Free 账号 input+output token 的调度惩罚阈值。
 	// 0 表示关闭。达到阈值后该账号 24 小时内尽量不被选中。
-	BuildUsagePenaltyTokenThreshold int64    `yaml:"buildUsagePenaltyTokenThreshold"`
-	SegmentedSelectorEnabled        bool     `yaml:"segmentedSelectorEnabled"`
-	SegmentedMinCandidates          int      `yaml:"segmentedSelectorMinCandidates"`
-	SegmentedWindowSize             int      `yaml:"segmentedSelectorWindowSize"`
-	ReasoningReplayEnabled          bool     `yaml:"reasoningReplayEnabled"`
-	ReasoningReplayTTL              Duration `yaml:"reasoningReplayTTL"`
-	ReasoningReplayMaxEntries       int      `yaml:"reasoningReplayMaxEntries"`
+	BuildUsagePenaltyTokenThreshold int64 `yaml:"buildUsagePenaltyTokenThreshold"`
+	// BuildMissingReasoningPenaltyEnabled penalizes Build accounts that return
+	// HTTP 200 with outputTokens>20 and reasoningTokens=0 on watched models.
+	BuildMissingReasoningPenaltyEnabled bool `yaml:"buildMissingReasoningPenaltyEnabled"`
+	// BuildMissingReasoningPenaltyModelIDs lists public model IDs to watch; empty means no penalty.
+	BuildMissingReasoningPenaltyModelIDs []string `yaml:"buildMissingReasoningPenaltyModelIDs"`
+	SegmentedSelectorEnabled             bool     `yaml:"segmentedSelectorEnabled"`
+	SegmentedMinCandidates               int      `yaml:"segmentedSelectorMinCandidates"`
+	SegmentedWindowSize                  int      `yaml:"segmentedSelectorWindowSize"`
+	ReasoningReplayEnabled               bool     `yaml:"reasoningReplayEnabled"`
+	ReasoningReplayTTL                   Duration `yaml:"reasoningReplayTTL"`
+	ReasoningReplayMaxEntries            int      `yaml:"reasoningReplayMaxEntries"`
 	// AutoAssignMaxNodeShare optionally caps how many active accounts one
 	// healthy node may absorb during auto assignment. 0 keeps the historical
 	// unbounded first-pass evacuation. Values in [0.05, 1] are a fraction of
@@ -722,6 +727,14 @@ func (c Config) Validate() error {
 	if c.Routing.BuildUsagePenaltyTokenThreshold < 0 || c.Routing.BuildUsagePenaltyTokenThreshold > 1_000_000_000_000 {
 		return errors.New("routing.buildUsagePenaltyTokenThreshold 必须在 0 到 1000000000000 之间")
 	}
+	if len(c.Routing.BuildMissingReasoningPenaltyModelIDs) > 64 {
+		return errors.New("routing.buildMissingReasoningPenaltyModelIDs 最多支持 64 个模型")
+	}
+	for _, modelID := range c.Routing.BuildMissingReasoningPenaltyModelIDs {
+		if strings.TrimSpace(modelID) == "" || len(strings.TrimSpace(modelID)) > 128 {
+			return errors.New("routing.buildMissingReasoningPenaltyModelIDs 包含无效模型 ID")
+		}
+	}
 	if !validAutoAssignShare(c.Routing.AutoAssignMaxNodeShare) || !validAutoAssignShare(c.Routing.AutoAssignMaxMigrationShare) {
 		return errors.New("routing.autoAssignMaxNodeShare 与 autoAssignMaxMigrationShare 必须为 0 或 0.05 到 1 之间")
 	}
@@ -956,26 +969,28 @@ func defaultConfig() Config {
 			Local: LocalMediaConfig{Path: "./data/media"},
 		},
 		Routing: RoutingConfig{
-			StickyTTL:                       Duration(time.Hour),
-			CooldownBase:                    Duration(30 * time.Second),
-			CooldownMax:                     Duration(30 * time.Minute),
-			CapacityWait:                    Duration(500 * time.Millisecond),
-			MaxAttempts:                     999,
-			VideoMaxAttempts:                999,
-			MarkBuildChatDeniedAsReauth:     false,
-			PreferFreeBuild:                 false,
-			AccountIsolatedConnections:      false,
-			BuildHighTokenSpeedAutoDisable:  false,
-			BuildHighTokenSpeedThreshold:    1000,
-			BuildHighTokenSpeedModelIDs:     nil,
-			BuildHighTokenSpeedOverheadMS:   2000,
-			BuildUsagePenaltyTokenThreshold: 0,
-			SegmentedSelectorEnabled:        true,
-			SegmentedMinCandidates:          3000,
-			SegmentedWindowSize:             64,
-			ReasoningReplayEnabled:          true,
-			ReasoningReplayTTL:              Duration(time.Hour),
-			ReasoningReplayMaxEntries:       10240,
+			StickyTTL:                            Duration(time.Hour),
+			CooldownBase:                         Duration(30 * time.Second),
+			CooldownMax:                          Duration(30 * time.Minute),
+			CapacityWait:                         Duration(500 * time.Millisecond),
+			MaxAttempts:                          999,
+			VideoMaxAttempts:                     999,
+			MarkBuildChatDeniedAsReauth:          false,
+			PreferFreeBuild:                      false,
+			AccountIsolatedConnections:           false,
+			BuildHighTokenSpeedAutoDisable:       false,
+			BuildHighTokenSpeedThreshold:         1000,
+			BuildHighTokenSpeedModelIDs:          nil,
+			BuildHighTokenSpeedOverheadMS:        2000,
+			BuildUsagePenaltyTokenThreshold:      0,
+			BuildMissingReasoningPenaltyEnabled:  false,
+			BuildMissingReasoningPenaltyModelIDs: []string{"grok-4.6"},
+			SegmentedSelectorEnabled:             true,
+			SegmentedMinCandidates:               3000,
+			SegmentedWindowSize:                  64,
+			ReasoningReplayEnabled:               true,
+			ReasoningReplayTTL:                   Duration(time.Hour),
+			ReasoningReplayMaxEntries:            10240,
 		},
 		Audit: AuditConfig{
 			BufferSize: 16384, BatchSize: 256, FlushInterval: Duration(250 * time.Millisecond), CommitDelay: Duration(5 * time.Millisecond),

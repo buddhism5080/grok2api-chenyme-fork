@@ -86,7 +86,7 @@ func (s *Selector) acquireSegmentedCandidates(ctx context.Context, values []acco
 		} else {
 			concurrencyHints := make(map[int]int, min(len(indexes), request.windowSize*segmentedWindowsBeforeFullFallback))
 			cohorts := segmentedCandidateCohorts(values, indexes, now, tierOrder, preferFreeBuild, func(accountID uint64) bool {
-				return s.usagePenalty.Penalized(accountID, now)
+				return s.schedulingPenalized(accountID, now)
 			}, request.cursor, request.windowSize, segmentedWindowsBeforeFullFallback)
 			roundWindows := 0
 			fallbackToFull := false

@@ -242,6 +242,8 @@ type Service struct {
 	buildStreamFirstCharTimeout atomic.Int64
 	buildHighTokenSpeedMu       sync.RWMutex
 	buildHighTokenSpeedPolicy   buildHighTokenSpeedPolicy
+	buildMissingReasoningMu     sync.RWMutex
+	buildMissingReasoningPolicy buildMissingReasoningPolicy
 }
 
 type teamModelRateLimit struct {
@@ -264,6 +266,11 @@ type buildHighTokenSpeedPolicy struct {
 	threshold  float64
 	overheadMS int64
 	models     map[string]struct{}
+}
+
+type buildMissingReasoningPolicy struct {
+	enabled bool
+	models  map[string]struct{}
 }
 
 func (s *Service) ConfigureMedia(repository repository.MediaJobRepository, concurrency int) {
@@ -535,6 +542,22 @@ func (s *Service) UpdateBuildHighTokenSpeedAutoDisable(enabled bool, threshold f
 		models:     models,
 	}
 	s.buildHighTokenSpeedMu.Unlock()
+}
+
+// UpdateBuildMissingReasoningPenalty 热更新 Build 无推理输出的调度惩罚。
+// 默认关闭；开启后仅对指定公开模型 ID 生效。命中条件：HTTP 200、outputTokens>20、reasoningTokens=0。
+func (s *Service) UpdateBuildMissingReasoningPenalty(enabled bool, modelIDs []string) {
+	models := make(map[string]struct{}, len(modelIDs))
+	for _, raw := range modelIDs {
+		value := strings.ToLower(strings.TrimSpace(raw))
+		if value == "" {
+			continue
+		}
+		models[value] = struct{}{}
+	}
+	s.buildMissingReasoningMu.Lock()
+	s.buildMissingReasoningPolicy = buildMissingReasoningPolicy{enabled: enabled, models: models}
+	s.buildMissingReasoningMu.Unlock()
 }
 
 func (s *Service) UpdateRequestTimeout(value time.Duration) {
@@ -1230,6 +1253,10 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 				if successful {
 					_ = budget.run("high_tps_disable", finalizationMetadataBudget, func(stageCtx context.Context) error {
 						s.maybeDisableBuildAccountForHighTokenSpeed(stageCtx, record, credential, publicModel)
+						return nil
+					})
+					_ = budget.run("missing_reasoning_penalty", finalizationMetadataBudget, func(stageCtx context.Context) error {
+						s.maybePenalizeBuildMissingReasoning(record, credential, publicModel)
 						return nil
 					})
 				}
@@ -1994,6 +2021,28 @@ func (s *Service) maybeDisableBuildAccountForHighTokenSpeed(ctx context.Context,
 		return
 	}
 	s.logger.Warn("build_high_token_speed_account_disabled", "request_id", record.RequestID, "account_id", credential.ID, "account_name", credential.Name, "model", modelID, "speed", speed, "threshold", policy.threshold, "output_tokens", record.OutputTokens, "reasoning_tokens", record.ReasoningTokens, "effective_ms", effectiveMS)
+}
+
+func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, credential accountdomain.Credential, publicModel string) {
+	if s == nil || s.selector == nil || record.AccountID == nil {
+		return
+	}
+	s.buildMissingReasoningMu.RLock()
+	policy := s.buildMissingReasoningPolicy
+	s.buildMissingReasoningMu.RUnlock()
+	modelID := strings.ToLower(strings.TrimSpace(publicModel))
+	if modelID == "" {
+		modelID = strings.ToLower(strings.TrimSpace(record.ModelPublicID))
+	}
+	if !missingReasoningPenaltyApplies(credential.Provider, record.StatusCode, record.OutputTokens, record.ReasoningTokens, modelID, policy.enabled, policy.models) {
+		return
+	}
+	s.selector.RecordMissingReasoningPenalty(*record.AccountID, time.Now().UTC())
+	logger := s.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Warn("build_missing_reasoning_penalty", "request_id", record.RequestID, "account_id", credential.ID, "account_name", credential.Name, "model", modelID, "status", record.StatusCode, "output_tokens", record.OutputTokens, "reasoning_tokens", record.ReasoningTokens)
 }
 
 func (s *Service) markSSOCredentialRejected(ctx context.Context, credential accountdomain.Credential, reason string) {

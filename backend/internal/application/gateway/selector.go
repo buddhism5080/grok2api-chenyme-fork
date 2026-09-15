@@ -298,43 +298,44 @@ func (l *accountLease) completeSelectorObservation(success bool) {
 
 // Selector 实现可替换的 balanced 账号选择策略。
 type Selector struct {
-	accounts               repository.AccountRepository
-	concurrency            repository.ConcurrencyLimiter
-	sticky                 repository.StickySessionRepository
-	stickyTTL              time.Duration
-	cooldownBase           time.Duration
-	cooldownMax            time.Duration
-	capacityWait           time.Duration
-	preferFreeBuild        bool
-	excludeBuildBotFlagged bool
-	usagePenalty           *buildUsagePenaltyBook
-	segmentedConfig        segmentedSelectorConfig
-	segmentedState         segmentedSelectorState
-	configMu               sync.RWMutex
-	candidateMu            sync.Mutex
-	selectionMu            sync.RWMutex
-	healthMu               sync.RWMutex
-	quotaMu                sync.RWMutex
-	staleLogMu             sync.Mutex
-	logger                 *slog.Logger
-	leaseWakeMu            sync.Mutex
-	leaseWake              chan struct{}
-	lastSelectedAt         map[uint64]time.Time
-	lastSuccessAt          map[uint64]time.Time
-	healthOverrides        map[uint64]routingHealthOverride
-	quotaConsumed          map[quotaConsumptionKey]int
-	staleFallbackLoggedAt  map[string]time.Time
-	candidates             map[candidateCacheKey]candidateSnapshot
-	routingBases           map[routingBaseCacheKey]routingBaseSnapshot
-	routingOverlays        map[routingOverlayCacheKey]routingOverlaySnapshot
-	routingAccountProvider map[uint64]account.Provider
-	baseGlobalVersion      uint64
-	overlayGlobalVersion   uint64
-	baseProviderVersion    map[account.Provider]uint64
-	overlayProviderVersion map[account.Provider]uint64
-	candidateLoads         singleflight.Group
-	concurrencySnapshots   *resultcache.Cache[[32]byte, map[string]int]
-	tierOrders             interface {
+	accounts                repository.AccountRepository
+	concurrency             repository.ConcurrencyLimiter
+	sticky                  repository.StickySessionRepository
+	stickyTTL               time.Duration
+	cooldownBase            time.Duration
+	cooldownMax             time.Duration
+	capacityWait            time.Duration
+	preferFreeBuild         bool
+	excludeBuildBotFlagged  bool
+	usagePenalty            *buildUsagePenaltyBook
+	missingReasoningPenalty *accountPenaltyBook
+	segmentedConfig         segmentedSelectorConfig
+	segmentedState          segmentedSelectorState
+	configMu                sync.RWMutex
+	candidateMu             sync.Mutex
+	selectionMu             sync.RWMutex
+	healthMu                sync.RWMutex
+	quotaMu                 sync.RWMutex
+	staleLogMu              sync.Mutex
+	logger                  *slog.Logger
+	leaseWakeMu             sync.Mutex
+	leaseWake               chan struct{}
+	lastSelectedAt          map[uint64]time.Time
+	lastSuccessAt           map[uint64]time.Time
+	healthOverrides         map[uint64]routingHealthOverride
+	quotaConsumed           map[quotaConsumptionKey]int
+	staleFallbackLoggedAt   map[string]time.Time
+	candidates              map[candidateCacheKey]candidateSnapshot
+	routingBases            map[routingBaseCacheKey]routingBaseSnapshot
+	routingOverlays         map[routingOverlayCacheKey]routingOverlaySnapshot
+	routingAccountProvider  map[uint64]account.Provider
+	baseGlobalVersion       uint64
+	overlayGlobalVersion    uint64
+	baseProviderVersion     map[account.Provider]uint64
+	overlayProviderVersion  map[account.Provider]uint64
+	candidateLoads          singleflight.Group
+	concurrencySnapshots    *resultcache.Cache[[32]byte, map[string]int]
+	tierOrders              interface {
 		TierOrder(account.Provider, string) []account.WebTier
 	}
 }
@@ -346,7 +347,7 @@ func NewSelector(accounts repository.AccountRepository, concurrency repository.C
 	if len(capacityWait) > 0 && capacityWait[0] > 0 {
 		wait = capacityWait[0]
 	}
-	selector := &Selector{accounts: accounts, concurrency: concurrency, sticky: sticky, tierOrders: tierOrders, stickyTTL: stickyTTL, cooldownBase: cooldownBase, cooldownMax: cooldownMax, capacityWait: wait, leaseWake: make(chan struct{}), logger: slog.Default(), lastSelectedAt: make(map[uint64]time.Time), lastSuccessAt: make(map[uint64]time.Time), healthOverrides: make(map[uint64]routingHealthOverride), quotaConsumed: make(map[quotaConsumptionKey]int), staleFallbackLoggedAt: make(map[string]time.Time), candidates: make(map[candidateCacheKey]candidateSnapshot), routingBases: make(map[routingBaseCacheKey]routingBaseSnapshot), routingOverlays: make(map[routingOverlayCacheKey]routingOverlaySnapshot), routingAccountProvider: make(map[uint64]account.Provider), baseProviderVersion: make(map[account.Provider]uint64), overlayProviderVersion: make(map[account.Provider]uint64), concurrencySnapshots: resultcache.New[[32]byte, map[string]int](maxConcurrencySnapshots, concurrencySnapshotTTL), usagePenalty: newBuildUsagePenaltyBook()}
+	selector := &Selector{accounts: accounts, concurrency: concurrency, sticky: sticky, tierOrders: tierOrders, stickyTTL: stickyTTL, cooldownBase: cooldownBase, cooldownMax: cooldownMax, capacityWait: wait, leaseWake: make(chan struct{}), logger: slog.Default(), lastSelectedAt: make(map[uint64]time.Time), lastSuccessAt: make(map[uint64]time.Time), healthOverrides: make(map[uint64]routingHealthOverride), quotaConsumed: make(map[quotaConsumptionKey]int), staleFallbackLoggedAt: make(map[string]time.Time), candidates: make(map[candidateCacheKey]candidateSnapshot), routingBases: make(map[routingBaseCacheKey]routingBaseSnapshot), routingOverlays: make(map[routingOverlayCacheKey]routingOverlaySnapshot), routingAccountProvider: make(map[uint64]account.Provider), baseProviderVersion: make(map[account.Provider]uint64), overlayProviderVersion: make(map[account.Provider]uint64), concurrencySnapshots: resultcache.New[[32]byte, map[string]int](maxConcurrencySnapshots, concurrencySnapshotTTL), usagePenalty: newBuildUsagePenaltyBook(), missingReasoningPenalty: newAccountPenaltyBook(0)}
 	selector.loadUsagePenalties()
 	return selector
 }
@@ -678,7 +679,7 @@ func (s *Selector) acquire(ctx context.Context, provider account.Provider, model
 		}
 		if ok {
 			candidate, eligible := routingCandidateByID(values, normalCandidates, stickyID)
-			if eligible && s.usagePenalty.Penalized(stickyID, now) {
+			if eligible && s.schedulingPenalized(stickyID, now) {
 				eligible = false
 			}
 			if eligible {

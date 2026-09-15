@@ -176,6 +176,13 @@ export const settingsSchema = z.object({
       }
     }),
     buildUsagePenaltyTokenThreshold: z.number().int().min(0).max(1_000_000_000_000),
+    buildMissingReasoningPenaltyEnabled: z.boolean(),
+    buildMissingReasoningPenaltyModelIDs: z.string().superRefine((value, context) => {
+      const models = parseModelIDs(value);
+      if (models.length > 64 || models.some((model) => model.length === 0 || model.length > 128)) {
+        context.addIssue({ code: "custom", message: "invalid" });
+      }
+    }),
     segmentedSelector: z.object({
       enabled: z.boolean(),
       minCandidates: z.number().int().min(100).max(1_000_000),
@@ -250,6 +257,8 @@ export function toSettingsForm(config: SettingsConfigDTO): SettingsForm {
       buildHighTokenSpeedOverheadMS: config.routing.buildHighTokenSpeedOverheadMS,
       buildHighTokenSpeedModelIDs: (config.routing.buildHighTokenSpeedModelIDs ?? []).join("\n"),
       buildUsagePenaltyTokenThreshold: config.routing.buildUsagePenaltyTokenThreshold ?? 0,
+      buildMissingReasoningPenaltyEnabled: config.routing.buildMissingReasoningPenaltyEnabled ?? false,
+      buildMissingReasoningPenaltyModelIDs: (config.routing.buildMissingReasoningPenaltyModelIDs ?? []).join("\n"),
       segmentedSelector: config.routing.segmentedSelector,
     },
     audit: {
@@ -304,6 +313,8 @@ export function toSettingsDTO(config: SettingsForm): SettingsConfigDTO {
       buildHighTokenSpeedOverheadMS: config.routing.buildHighTokenSpeedOverheadMS,
       buildHighTokenSpeedModelIDs: parseModelIDs(config.routing.buildHighTokenSpeedModelIDs),
       buildUsagePenaltyTokenThreshold: config.routing.buildUsagePenaltyTokenThreshold,
+      buildMissingReasoningPenaltyEnabled: config.routing.buildMissingReasoningPenaltyEnabled,
+      buildMissingReasoningPenaltyModelIDs: parseModelIDs(config.routing.buildMissingReasoningPenaltyModelIDs),
       segmentedSelector: config.routing.segmentedSelector,
     },
     audit: {
