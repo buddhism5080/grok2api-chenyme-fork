@@ -368,6 +368,35 @@ func TestRoleMissingTypeBecomesMessageAndFunctionCallIsAllowlisted(t *testing.T)
 	}
 }
 
+func TestNormalizeResponsesRequestEmptyCallIDErrorIncludesType(t *testing.T) {
+	tests := []struct {
+		name string
+		item string
+		kind string
+	}{
+		{name: "function_call", item: `{"type":"function_call","id":"fc_1","name":"broken","arguments":"{}"}`, kind: "function_call"},
+		{name: "function_call blank call_id", item: `{"type":"function_call","call_id":"   ","name":"broken","arguments":"{}"}`, kind: "function_call"},
+		{name: "function_call_output", item: `{"type":"function_call_output","output":"ok"}`, kind: "function_call_output"},
+		{name: "custom_tool_call", item: `{"type":"custom_tool_call","name":"apply_patch","input":"x"}`, kind: "custom_tool_call"},
+		{name: "apply_patch_call", item: `{"type":"apply_patch_call","operation":{"type":"delete_file","path":"old.txt"}}`, kind: "apply_patch_call"},
+		{name: "local_shell_call", item: `{"type":"local_shell_call","action":{"type":"exec","command":["pwd"]}}`, kind: "local_shell_call"},
+		{name: "tool_search_call", item: `{"type":"tool_search_call","execution":"client","arguments":{"goal":"x"}}`, kind: "tool_search_call"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := normalizeResponsesRequest([]byte(`{"model":"public","input":[`+test.item+`]}`), "grok-4.5")
+			requestErr, ok := err.(*responsesRequestError)
+			if !ok {
+				t.Fatalf("err=%v", err)
+			}
+			want := "input[0] (" + test.kind + ").call_id 不能为空"
+			if requestErr.Message != want || requestErr.Param != "input[0].call_id" || requestErr.Code != "invalid_parameter" {
+				t.Fatalf("err=%#v want %q", requestErr, want)
+			}
+		})
+	}
+}
+
 func TestNativeBuildHistoryItemsArePreservedAndSanitized(t *testing.T) {
 	normalized, _, err := normalizeResponsesRequest([]byte(`{
 		"model":"public","input":[
