@@ -61,7 +61,7 @@ func (c *responsesToolCompatibility) normalizeInputItems(items []any) ([]any, []
 		case "tool_search_call":
 			callID := strings.TrimSpace(stringField(item, "call_id"))
 			if callID == "" {
-				return nil, nil, nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+				return nil, nil, nil, emptyCallIDError(param, itemType)
 			}
 			execution := strings.ToLower(strings.TrimSpace(stringField(item, "execution")))
 			if execution == "" || execution == "server" {
@@ -90,7 +90,7 @@ func (c *responsesToolCompatibility) normalizeInputItems(items []any) ([]any, []
 			}
 			callID := strings.TrimSpace(stringField(item, "call_id"))
 			if callID == "" {
-				return nil, nil, nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+				return nil, nil, nil, emptyCallIDError(param, itemType)
 			}
 			tools, ok := item["tools"].([]any)
 			if !ok {
@@ -218,7 +218,7 @@ func (c *responsesToolCompatibility) normalizeFunctionCallInput(item map[string]
 	}
 	callID := strings.TrimSpace(stringField(item, "call_id"))
 	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+		return nil, emptyCallIDError(param, "function_call")
 	}
 	arguments, err := encodeFunctionArguments(item["arguments"])
 	if err != nil {
@@ -248,7 +248,7 @@ func (c *responsesToolCompatibility) normalizeCustomToolCallInput(item map[strin
 	}
 	callID := strings.TrimSpace(stringField(item, "call_id"))
 	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+		return nil, emptyCallIDError(param, "custom_tool_call")
 	}
 	namespace := strings.TrimSpace(stringField(item, "namespace"))
 	return map[string]any{
