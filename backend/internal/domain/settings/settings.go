@@ -153,7 +153,10 @@ type RoutingConfig struct {
 	BuildMissingReasoningPenaltyEnabled *bool
 	// BuildMissingReasoningPenaltyModelIDs 需要监控的公开模型 ID；空列表表示不生效。
 	BuildMissingReasoningPenaltyModelIDs []string
-	SegmentedSelector                    *SegmentedSelectorConfig
+	// BuildMissingReasoningPenaltyUserTurnModelIDs 仅在最后一条输入是用户 prompt 时惩罚的模型。
+	// 空列表表示不额外按轮次过滤。
+	BuildMissingReasoningPenaltyUserTurnModelIDs []string
+	SegmentedSelector                            *SegmentedSelectorConfig
 }
 
 type SegmentedSelectorConfig struct {

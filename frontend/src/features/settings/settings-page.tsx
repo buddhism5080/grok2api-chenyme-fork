@@ -530,6 +530,9 @@ export function SettingsPage() {
                 <SettingsField controlId="accounts-build-missing-reasoning-penalty-model-ids" label={t("settings.accounts.buildMissingReasoningPenaltyModelIDs")} description={t("settings.accounts.buildMissingReasoningPenaltyModelIDsHelp")} error={form.formState.errors.routing?.buildMissingReasoningPenaltyModelIDs?.message}>
                   <Textarea id="accounts-build-missing-reasoning-penalty-model-ids" rows={3} disabled={!form.watch("routing.buildMissingReasoningPenaltyEnabled")} placeholder={t("settings.accounts.buildMissingReasoningPenaltyModelIDsPlaceholder")} {...form.register("routing.buildMissingReasoningPenaltyModelIDs")} />
                 </SettingsField>
+                <SettingsField controlId="accounts-build-missing-reasoning-penalty-user-turn-model-ids" label={t("settings.accounts.buildMissingReasoningPenaltyUserTurnModelIDs")} description={t("settings.accounts.buildMissingReasoningPenaltyUserTurnModelIDsHelp")} error={form.formState.errors.routing?.buildMissingReasoningPenaltyUserTurnModelIDs?.message}>
+                  <Textarea id="accounts-build-missing-reasoning-penalty-user-turn-model-ids" rows={3} disabled={!form.watch("routing.buildMissingReasoningPenaltyEnabled")} placeholder={t("settings.accounts.buildMissingReasoningPenaltyUserTurnModelIDsPlaceholder")} {...form.register("routing.buildMissingReasoningPenaltyUserTurnModelIDs")} />
+                </SettingsField>
               </div>
             </SettingsSection>
 

@@ -100,23 +100,90 @@ func TestSelectorMissingReasoningPenaltyClearsStickyAndDeprioritizes(t *testing.
 func TestMaybePenalizeBuildMissingReasoning(t *testing.T) {
 	selector, hot, _ := newFreeBuildUsagePenaltySelector(t)
 	service := &Service{selector: selector}
-	service.UpdateBuildMissingReasoningPenalty(true, []string{" grok-4.6 ", "Grok-4.6"})
+	service.UpdateBuildMissingReasoningPenalty(true, []string{" grok-4.6 ", "Grok-4.6"}, nil)
 	accountID := hot.ID
 	record := audit.Record{
 		StatusCode: http.StatusOK, OutputTokens: 21, ReasoningTokens: 0,
 		ModelPublicID: "grok-4.6", AccountID: &accountID,
 	}
-	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6")
+	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6", nil)
 	if !selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
 		t.Fatal("matching 200/no-reasoning request should penalize scheduling")
 	}
 
 	other := &Service{selector: selector}
-	other.UpdateBuildMissingReasoningPenalty(true, []string{"grok-4.6"})
+	other.UpdateBuildMissingReasoningPenalty(true, []string{"grok-4.6"}, nil)
 	coldID := uint64(99)
 	skip := audit.Record{StatusCode: http.StatusOK, OutputTokens: 21, ReasoningTokens: 4, ModelPublicID: "grok-4.6", AccountID: &coldID}
-	other.maybePenalizeBuildMissingReasoning(skip, account.Credential{ID: 99, Provider: account.ProviderBuild}, "grok-4.6")
+	other.maybePenalizeBuildMissingReasoning(skip, account.Credential{ID: 99, Provider: account.ProviderBuild}, "grok-4.6", nil)
 	if selector.schedulingPenalized(99, time.Now().UTC()) {
 		t.Fatal("reasoning tokens > 0 must not penalize")
+	}
+}
+
+func TestLastConversationTurnIsUserPrompt(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "empty", body: "", want: false},
+		{name: "responses string input", body: `{"input":"hello"}`, want: true},
+		{name: "responses user message", body: `{"input":[{"role":"user","content":"hello"}]}`, want: true},
+		{name: "responses typed user message", body: `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}]}`, want: true},
+		{name: "responses function_call_output last", body: `{"input":[{"role":"user","content":"hi"},{"type":"function_call_output","call_id":"c1","output":"done"}]}`, want: false},
+		{name: "responses tool_result last", body: `{"input":[{"type":"tool_result","tool_use_id":"t1","content":"done"}]}`, want: false},
+		{name: "chat user last", body: `{"messages":[{"role":"user","content":"hello"}]}`, want: true},
+		{name: "chat tool last", body: `{"messages":[{"role":"user","content":"hi"},{"role":"assistant","tool_calls":[]},{"role":"tool","tool_call_id":"c1","content":"done"}]}`, want: false},
+		{name: "anthropic tool_result-only user last", body: `{"messages":[{"role":"user","content":"hi"},{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}]}`, want: false},
+		{name: "anthropic user text plus tool_result", body: `{"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"},{"type":"text","text":"continue"}]}]}`, want: true},
+		{name: "assistant last", body: `{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"yo"}]}`, want: false},
+		{name: "prefer input over messages", body: `{"input":[{"type":"function_call_output","call_id":"c1","output":"x"}],"messages":[{"role":"user","content":"hi"}]}`, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := lastConversationTurnIsUserPrompt([]byte(test.body))
+			if got != test.want {
+				t.Fatalf("got %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestMaybePenalizeSkipsToolResultTurnsForUserTurnModels(t *testing.T) {
+	selector, hot, _ := newFreeBuildUsagePenaltySelector(t)
+	service := &Service{selector: selector}
+	service.UpdateBuildMissingReasoningPenalty(true, []string{"grok-4.7", "grok-4.6"}, []string{"grok-4.7"})
+	accountID := hot.ID
+	record := audit.Record{
+		StatusCode: http.StatusOK, OutputTokens: 21, ReasoningTokens: 0,
+		ModelPublicID: "grok-4.7", AccountID: &accountID,
+	}
+	toolBody := []byte(`{"input":[{"role":"user","content":"hi"},{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
+	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", toolBody)
+	if selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
+		t.Fatal("tool-result last turn must not penalize user-turn models")
+	}
+
+	userBody := []byte(`{"input":[{"role":"user","content":"write code"}]}`)
+	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", userBody)
+	if !selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
+		t.Fatal("user-prompt last turn should still penalize")
+	}
+}
+
+func TestMaybePenalizeToolResultStillHitsUngatedModels(t *testing.T) {
+	selector, hot, _ := newFreeBuildUsagePenaltySelector(t)
+	service := &Service{selector: selector}
+	service.UpdateBuildMissingReasoningPenalty(true, []string{"grok-4.6"}, []string{"grok-4.7"})
+	accountID := hot.ID
+	record := audit.Record{
+		StatusCode: http.StatusOK, OutputTokens: 21, ReasoningTokens: 0,
+		ModelPublicID: "grok-4.6", AccountID: &accountID,
+	}
+	toolBody := []byte(`{"messages":[{"role":"tool","tool_call_id":"c1","content":"done"}]}`)
+	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6", toolBody)
+	if !selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
+		t.Fatal("models outside the user-turn list keep the original penalty")
 	}
 }

@@ -18,6 +18,8 @@ func TestUpdateAppliesBuildMissingReasoningPenalty(t *testing.T) {
 	input.Routing.BuildMissingReasoningPenaltyEnabledProvided = true
 	input.Routing.BuildMissingReasoningPenaltyModelIDs = []string{" grok-4.6 ", "Grok-4.6", "grok-4.20"}
 	input.Routing.BuildMissingReasoningPenaltyModelIDsProvided = true
+	input.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs = []string{" grok-4.7 "}
+	input.Routing.BuildMissingReasoningPenaltyUserTurnModelIDsProvided = true
 
 	snapshot, err := service.Update(context.Background(), service.Get().Revision, input)
 	if err != nil {
@@ -30,6 +32,10 @@ func TestUpdateAppliesBuildMissingReasoningPenalty(t *testing.T) {
 	if len(got) != 2 || got[0] != "grok-4.6" || got[1] != "grok-4.20" {
 		t.Fatalf("applied models = %#v", got)
 	}
+	userTurn := applied.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs
+	if len(userTurn) != 1 || userTurn[0] != "grok-4.7" {
+		t.Fatalf("applied user-turn models = %#v", userTurn)
+	}
 	if snapshot.Config.Routing.BuildMissingReasoningPenaltyEnabled != true {
 		t.Fatal("snapshot lost enabled flag")
 	}
@@ -39,6 +45,7 @@ func TestUpdatePreservesBuildMissingReasoningPenaltyWhenOmitted(t *testing.T) {
 	cfg := testConfig(t)
 	cfg.Routing.BuildMissingReasoningPenaltyEnabled = true
 	cfg.Routing.BuildMissingReasoningPenaltyModelIDs = []string{"grok-4.6"}
+	cfg.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs = []string{"grok-4.7"}
 	repository := &runtimeSettingsRepositoryStub{}
 	var applied config.Config
 	service := NewService(cfg, time.Time{}, 0, repository, nil, func(next config.Config) { applied = next })
@@ -47,6 +54,8 @@ func TestUpdatePreservesBuildMissingReasoningPenaltyWhenOmitted(t *testing.T) {
 	input.Routing.BuildMissingReasoningPenaltyEnabledProvided = false
 	input.Routing.BuildMissingReasoningPenaltyModelIDs = nil
 	input.Routing.BuildMissingReasoningPenaltyModelIDsProvided = false
+	input.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs = nil
+	input.Routing.BuildMissingReasoningPenaltyUserTurnModelIDsProvided = false
 
 	if _, err := service.Update(context.Background(), 0, input); err != nil {
 		t.Fatal(err)
@@ -58,15 +67,21 @@ func TestUpdatePreservesBuildMissingReasoningPenaltyWhenOmitted(t *testing.T) {
 	if len(got) != 1 || got[0] != "grok-4.6" {
 		t.Fatalf("omitted missing-reasoning models overwrote the current value: %#v", got)
 	}
+	userTurn := applied.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs
+	if len(userTurn) != 1 || userTurn[0] != "grok-4.7" {
+		t.Fatalf("omitted user-turn models overwrote the current value: %#v", userTurn)
+	}
 }
 
 func TestLoadPersistedKeepsMissingReasoningDefaultsForOlderPayload(t *testing.T) {
 	cfg := testConfig(t)
 	cfg.Routing.BuildMissingReasoningPenaltyEnabled = false
 	cfg.Routing.BuildMissingReasoningPenaltyModelIDs = []string{"grok-4.6"}
+	cfg.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs = []string{"grok-4.7"}
 	value := toDomainConfig(cfg)
 	value.Routing.BuildMissingReasoningPenaltyEnabled = nil
 	value.Routing.BuildMissingReasoningPenaltyModelIDs = nil
+	value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs = nil
 	repository := &runtimeSettingsRepositoryStub{value: value, found: true}
 
 	loaded, _, _, err := LoadPersisted(context.Background(), cfg, repository)
@@ -79,5 +94,9 @@ func TestLoadPersistedKeepsMissingReasoningDefaultsForOlderPayload(t *testing.T)
 	got := loaded.Routing.BuildMissingReasoningPenaltyModelIDs
 	if len(got) != 1 || got[0] != "grok-4.6" {
 		t.Fatalf("older payload lost default models: %#v", got)
+	}
+	userTurn := loaded.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs
+	if len(userTurn) != 1 || userTurn[0] != "grok-4.7" {
+		t.Fatalf("older payload lost user-turn models: %#v", userTurn)
 	}
 }

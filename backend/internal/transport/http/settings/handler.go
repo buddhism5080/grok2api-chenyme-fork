@@ -100,23 +100,24 @@ type batchConfigDTO struct {
 }
 
 type routingConfigDTO struct {
-	StickyTTL                            string                      `json:"stickyTTL"`
-	CooldownBase                         string                      `json:"cooldownBase"`
-	CooldownMax                          string                      `json:"cooldownMax"`
-	CapacityWait                         string                      `json:"capacityWait"`
-	MaxAttempts                          int                         `json:"maxAttempts"`
-	VideoMaxAttempts                     int                         `json:"videoMaxAttempts"`
-	PreferFreeBuild                      bool                        `json:"preferFreeBuild"`
-	MarkBuildChatDeniedAsReauth          *bool                       `json:"markBuildChatDeniedAsReauth,omitempty"`
-	AccountIsolatedConnections           *bool                       `json:"accountIsolatedConnections,omitempty"`
-	BuildHighTokenSpeedAutoDisable       *bool                       `json:"buildHighTokenSpeedAutoDisable,omitempty"`
-	BuildHighTokenSpeedThreshold         *float64                    `json:"buildHighTokenSpeedThreshold,omitempty"`
-	BuildHighTokenSpeedOverheadMS        *int64                      `json:"buildHighTokenSpeedOverheadMS,omitempty"`
-	BuildHighTokenSpeedModelIDs          *[]string                   `json:"buildHighTokenSpeedModelIDs,omitempty"`
-	BuildUsagePenaltyTokenThreshold      *int64                      `json:"buildUsagePenaltyTokenThreshold,omitempty"`
-	BuildMissingReasoningPenaltyEnabled  *bool                       `json:"buildMissingReasoningPenaltyEnabled,omitempty"`
-	BuildMissingReasoningPenaltyModelIDs *[]string                   `json:"buildMissingReasoningPenaltyModelIDs,omitempty"`
-	SegmentedSelector                    *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
+	StickyTTL                                    string                      `json:"stickyTTL"`
+	CooldownBase                                 string                      `json:"cooldownBase"`
+	CooldownMax                                  string                      `json:"cooldownMax"`
+	CapacityWait                                 string                      `json:"capacityWait"`
+	MaxAttempts                                  int                         `json:"maxAttempts"`
+	VideoMaxAttempts                             int                         `json:"videoMaxAttempts"`
+	PreferFreeBuild                              bool                        `json:"preferFreeBuild"`
+	MarkBuildChatDeniedAsReauth                  *bool                       `json:"markBuildChatDeniedAsReauth,omitempty"`
+	AccountIsolatedConnections                   *bool                       `json:"accountIsolatedConnections,omitempty"`
+	BuildHighTokenSpeedAutoDisable               *bool                       `json:"buildHighTokenSpeedAutoDisable,omitempty"`
+	BuildHighTokenSpeedThreshold                 *float64                    `json:"buildHighTokenSpeedThreshold,omitempty"`
+	BuildHighTokenSpeedOverheadMS                *int64                      `json:"buildHighTokenSpeedOverheadMS,omitempty"`
+	BuildHighTokenSpeedModelIDs                  *[]string                   `json:"buildHighTokenSpeedModelIDs,omitempty"`
+	BuildUsagePenaltyTokenThreshold              *int64                      `json:"buildUsagePenaltyTokenThreshold,omitempty"`
+	BuildMissingReasoningPenaltyEnabled          *bool                       `json:"buildMissingReasoningPenaltyEnabled,omitempty"`
+	BuildMissingReasoningPenaltyModelIDs         *[]string                   `json:"buildMissingReasoningPenaltyModelIDs,omitempty"`
+	BuildMissingReasoningPenaltyUserTurnModelIDs *[]string                   `json:"buildMissingReasoningPenaltyUserTurnModelIDs,omitempty"`
+	SegmentedSelector                            *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
 }
 
 type segmentedSelectorConfigDTO struct {
@@ -239,25 +240,27 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 		Routing: settingsapp.RoutingConfig{
 			StickyTTL: value.Routing.StickyTTL, CooldownBase: value.Routing.CooldownBase,
 			CooldownMax: value.Routing.CooldownMax, CapacityWait: value.Routing.CapacityWait, MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-			PreferFreeBuild:                              value.Routing.PreferFreeBuild,
-			MarkBuildChatDeniedAsReauth:                  boolValue(value.Routing.MarkBuildChatDeniedAsReauth),
-			MarkBuildChatDeniedAsReauthProvided:          value.Routing.MarkBuildChatDeniedAsReauth != nil,
-			AccountIsolatedConnections:                   boolValue(value.Routing.AccountIsolatedConnections),
-			AccountIsolatedConnectionsProvided:           value.Routing.AccountIsolatedConnections != nil,
-			BuildHighTokenSpeedAutoDisable:               boolValue(value.Routing.BuildHighTokenSpeedAutoDisable),
-			BuildHighTokenSpeedAutoDisableProvided:       value.Routing.BuildHighTokenSpeedAutoDisable != nil,
-			BuildHighTokenSpeedThreshold:                 float64Value(value.Routing.BuildHighTokenSpeedThreshold),
-			BuildHighTokenSpeedThresholdProvided:         value.Routing.BuildHighTokenSpeedThreshold != nil,
-			BuildHighTokenSpeedOverheadMS:                int64Value(value.Routing.BuildHighTokenSpeedOverheadMS),
-			BuildHighTokenSpeedOverheadMSProvided:        value.Routing.BuildHighTokenSpeedOverheadMS != nil,
-			BuildHighTokenSpeedModelIDs:                  stringSliceValue(value.Routing.BuildHighTokenSpeedModelIDs),
-			BuildHighTokenSpeedModelIDsProvided:          value.Routing.BuildHighTokenSpeedModelIDs != nil,
-			BuildUsagePenaltyTokenThreshold:              int64Value(value.Routing.BuildUsagePenaltyTokenThreshold),
-			BuildUsagePenaltyTokenThresholdProvided:      value.Routing.BuildUsagePenaltyTokenThreshold != nil,
-			BuildMissingReasoningPenaltyEnabled:          boolValue(value.Routing.BuildMissingReasoningPenaltyEnabled),
-			BuildMissingReasoningPenaltyEnabledProvided:  value.Routing.BuildMissingReasoningPenaltyEnabled != nil,
-			BuildMissingReasoningPenaltyModelIDs:         stringSliceValue(value.Routing.BuildMissingReasoningPenaltyModelIDs),
-			BuildMissingReasoningPenaltyModelIDsProvided: value.Routing.BuildMissingReasoningPenaltyModelIDs != nil,
+			PreferFreeBuild:                                      value.Routing.PreferFreeBuild,
+			MarkBuildChatDeniedAsReauth:                          boolValue(value.Routing.MarkBuildChatDeniedAsReauth),
+			MarkBuildChatDeniedAsReauthProvided:                  value.Routing.MarkBuildChatDeniedAsReauth != nil,
+			AccountIsolatedConnections:                           boolValue(value.Routing.AccountIsolatedConnections),
+			AccountIsolatedConnectionsProvided:                   value.Routing.AccountIsolatedConnections != nil,
+			BuildHighTokenSpeedAutoDisable:                       boolValue(value.Routing.BuildHighTokenSpeedAutoDisable),
+			BuildHighTokenSpeedAutoDisableProvided:               value.Routing.BuildHighTokenSpeedAutoDisable != nil,
+			BuildHighTokenSpeedThreshold:                         float64Value(value.Routing.BuildHighTokenSpeedThreshold),
+			BuildHighTokenSpeedThresholdProvided:                 value.Routing.BuildHighTokenSpeedThreshold != nil,
+			BuildHighTokenSpeedOverheadMS:                        int64Value(value.Routing.BuildHighTokenSpeedOverheadMS),
+			BuildHighTokenSpeedOverheadMSProvided:                value.Routing.BuildHighTokenSpeedOverheadMS != nil,
+			BuildHighTokenSpeedModelIDs:                          stringSliceValue(value.Routing.BuildHighTokenSpeedModelIDs),
+			BuildHighTokenSpeedModelIDsProvided:                  value.Routing.BuildHighTokenSpeedModelIDs != nil,
+			BuildUsagePenaltyTokenThreshold:                      int64Value(value.Routing.BuildUsagePenaltyTokenThreshold),
+			BuildUsagePenaltyTokenThresholdProvided:              value.Routing.BuildUsagePenaltyTokenThreshold != nil,
+			BuildMissingReasoningPenaltyEnabled:                  boolValue(value.Routing.BuildMissingReasoningPenaltyEnabled),
+			BuildMissingReasoningPenaltyEnabledProvided:          value.Routing.BuildMissingReasoningPenaltyEnabled != nil,
+			BuildMissingReasoningPenaltyModelIDs:                 stringSliceValue(value.Routing.BuildMissingReasoningPenaltyModelIDs),
+			BuildMissingReasoningPenaltyModelIDsProvided:         value.Routing.BuildMissingReasoningPenaltyModelIDs != nil,
+			BuildMissingReasoningPenaltyUserTurnModelIDs:         stringSliceValue(value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs),
+			BuildMissingReasoningPenaltyUserTurnModelIDsProvided: value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs != nil,
 		},
 		Audit: settingsapp.AuditConfig{
 			BufferSize: value.Audit.BufferSize, BatchSize: value.Audit.BatchSize, FlushInterval: value.Audit.FlushInterval, CommitDelayMS: value.Audit.CommitDelayMS,
@@ -339,16 +342,17 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 			Routing: routingConfigDTO{
 				StickyTTL: config.Routing.StickyTTL, CooldownBase: config.Routing.CooldownBase,
 				CooldownMax: config.Routing.CooldownMax, CapacityWait: config.Routing.CapacityWait, MaxAttempts: config.Routing.MaxAttempts, VideoMaxAttempts: config.Routing.VideoMaxAttempts,
-				MarkBuildChatDeniedAsReauth:          boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),
-				PreferFreeBuild:                      config.Routing.PreferFreeBuild,
-				AccountIsolatedConnections:           boolPointer(config.Routing.AccountIsolatedConnections),
-				BuildHighTokenSpeedAutoDisable:       boolPointer(config.Routing.BuildHighTokenSpeedAutoDisable),
-				BuildHighTokenSpeedThreshold:         float64Pointer(config.Routing.BuildHighTokenSpeedThreshold),
-				BuildHighTokenSpeedOverheadMS:        int64Pointer(config.Routing.BuildHighTokenSpeedOverheadMS),
-				BuildHighTokenSpeedModelIDs:          stringSlicePointer(config.Routing.BuildHighTokenSpeedModelIDs),
-				BuildUsagePenaltyTokenThreshold:      int64Pointer(config.Routing.BuildUsagePenaltyTokenThreshold),
-				BuildMissingReasoningPenaltyEnabled:  boolPointer(config.Routing.BuildMissingReasoningPenaltyEnabled),
-				BuildMissingReasoningPenaltyModelIDs: stringSlicePointer(config.Routing.BuildMissingReasoningPenaltyModelIDs),
+				MarkBuildChatDeniedAsReauth:                  boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),
+				PreferFreeBuild:                              config.Routing.PreferFreeBuild,
+				AccountIsolatedConnections:                   boolPointer(config.Routing.AccountIsolatedConnections),
+				BuildHighTokenSpeedAutoDisable:               boolPointer(config.Routing.BuildHighTokenSpeedAutoDisable),
+				BuildHighTokenSpeedThreshold:                 float64Pointer(config.Routing.BuildHighTokenSpeedThreshold),
+				BuildHighTokenSpeedOverheadMS:                int64Pointer(config.Routing.BuildHighTokenSpeedOverheadMS),
+				BuildHighTokenSpeedModelIDs:                  stringSlicePointer(config.Routing.BuildHighTokenSpeedModelIDs),
+				BuildUsagePenaltyTokenThreshold:              int64Pointer(config.Routing.BuildUsagePenaltyTokenThreshold),
+				BuildMissingReasoningPenaltyEnabled:          boolPointer(config.Routing.BuildMissingReasoningPenaltyEnabled),
+				BuildMissingReasoningPenaltyModelIDs:         stringSlicePointer(config.Routing.BuildMissingReasoningPenaltyModelIDs),
+				BuildMissingReasoningPenaltyUserTurnModelIDs: stringSlicePointer(config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs),
 				SegmentedSelector: &segmentedSelectorConfigDTO{
 					Enabled: config.Routing.SegmentedSelector.Enabled, MinCandidates: config.Routing.SegmentedSelector.MinCandidates,
 					WindowSize: config.Routing.SegmentedSelector.WindowSize,

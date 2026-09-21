@@ -29,6 +29,7 @@ export type SettingsConfigDTO = {
     buildUsagePenaltyTokenThreshold: number;
     buildMissingReasoningPenaltyEnabled: boolean;
     buildMissingReasoningPenaltyModelIDs: string[];
+    buildMissingReasoningPenaltyUserTurnModelIDs: string[];
     segmentedSelector: { enabled: boolean; minCandidates: number; windowSize: number };
   };
   audit: { bufferSize: number; batchSize: number; flushInterval: string; commitDelayMS: number; retentionDays?: number };
@@ -144,6 +145,7 @@ const settingsConfigValidator = hasShape({
     buildUsagePenaltyTokenThreshold: isOptional(isNumber),
     buildMissingReasoningPenaltyEnabled: isOptional(isBoolean),
     buildMissingReasoningPenaltyModelIDs: isOptional(isArrayOf(isString)),
+    buildMissingReasoningPenaltyUserTurnModelIDs: isOptional(isArrayOf(isString)),
     segmentedSelector: isOptional(hasShape({ enabled: isBoolean, minCandidates: isNumber, windowSize: isNumber })),
   }),
   audit: hasShape({
@@ -207,6 +209,7 @@ function withSettingsDefaults(snapshot: SettingsSnapshotDTO): SettingsSnapshotDT
         buildUsagePenaltyTokenThreshold: snapshot.config.routing.buildUsagePenaltyTokenThreshold ?? 0,
         buildMissingReasoningPenaltyEnabled: snapshot.config.routing.buildMissingReasoningPenaltyEnabled ?? false,
         buildMissingReasoningPenaltyModelIDs: snapshot.config.routing.buildMissingReasoningPenaltyModelIDs ?? ["grok-4.6"],
+        buildMissingReasoningPenaltyUserTurnModelIDs: snapshot.config.routing.buildMissingReasoningPenaltyUserTurnModelIDs ?? [],
         segmentedSelector: {
           enabled: segmentedSelector.enabled ?? true,
           minCandidates: segmentedSelector.minCandidates || 3000,
