@@ -222,6 +222,13 @@ function RequestOverviewPanel({ audit }: { audit: AuditDTO }) {
           copy
         />
       ) : null}
+      {audit.missingReasoningPenalty ? (
+        <OverviewField
+          className="sm:col-span-2"
+          label={t("audits.missingReasoningPenalty")}
+          value={t("audits.missingReasoningPenaltyApplied")}
+        />
+      ) : null}
       {tokenSummary ? (
         <OverviewField
           className="sm:col-span-2"

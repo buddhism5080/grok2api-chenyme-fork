@@ -381,11 +381,12 @@ func toAuditModels(value audit.Record) (requestAuditModel, []requestAuditAttempt
 		EstimatedCostInUSDTicks: nonNegative(value.EstimatedCostInUSDTicks), PricingModel: truncate(value.PricingModel, 100), PricingVersion: truncate(value.PricingVersion, 20),
 		NumSourcesUsed: nonNegative(value.NumSourcesUsed), NumServerSideToolsUsed: nonNegative(value.NumServerSideToolsUsed),
 		ContextInputTokens: nonNegative(value.ContextInputTokens), ContextOutputTokens: nonNegative(value.ContextOutputTokens), FirstTokenMS: normalizedFirstToken(value), DurationMS: nonNegative(value.DurationMS),
-		ErrorCode:          truncate(value.ErrorCode, 100),
-		RequestMethod:      truncate(value.RequestMethod, 16),
-		RequestPath:        truncate(value.RequestPath, 2048),
-		RequestHeadersJSON: truncate(requestHeadersJSON, 65536),
-		AttemptCount:       len(value.Attempts), CreatedAt: value.CreatedAt,
+		ErrorCode:               truncate(value.ErrorCode, 100),
+		MissingReasoningPenalty: value.MissingReasoningPenalty,
+		RequestMethod:           truncate(value.RequestMethod, 16),
+		RequestPath:             truncate(value.RequestPath, 2048),
+		RequestHeadersJSON:      truncate(requestHeadersJSON, 65536),
+		AttemptCount:            len(value.Attempts), CreatedAt: value.CreatedAt,
 	}
 	attempts := make([]requestAuditAttemptModel, 0, len(value.Attempts))
 	for _, attempt := range value.Attempts {
@@ -1077,6 +1078,8 @@ func applyAuditQuery(query *gorm.DB, search string, start, end time.Time, filter
 		// 同时覆盖不属于 2xx/4xx/5xx 的状态段。status_code < 100 兼容
 		// 曾运行过早期实现并写入 0 的开发数据库，但新记录仍只允许 100..599。
 		query = query.Where("(status_code >= 200 AND status_code < 300 AND error_code IS NOT NULL AND error_code <> '') OR status_code < 200 OR (status_code >= 300 AND status_code < 400) OR status_code >= 600")
+	case "missingReasoning", "missing_reasoning":
+		query = query.Where("missing_reasoning_penalty = ?", true)
 	}
 	switch filter.Mode {
 	case "stream":

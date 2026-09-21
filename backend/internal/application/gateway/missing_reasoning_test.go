@@ -106,7 +106,9 @@ func TestMaybePenalizeBuildMissingReasoning(t *testing.T) {
 		StatusCode: http.StatusOK, OutputTokens: 21, ReasoningTokens: 0,
 		ModelPublicID: "grok-4.6", AccountID: &accountID,
 	}
-	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6", nil)
+	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6", nil) {
+		t.Fatal("matching 200/no-reasoning request should report an audit penalty")
+	}
 	if !selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
 		t.Fatal("matching 200/no-reasoning request should penalize scheduling")
 	}
@@ -115,7 +117,9 @@ func TestMaybePenalizeBuildMissingReasoning(t *testing.T) {
 	other.UpdateBuildMissingReasoningPenalty(true, []string{"grok-4.6"}, nil)
 	coldID := uint64(99)
 	skip := audit.Record{StatusCode: http.StatusOK, OutputTokens: 21, ReasoningTokens: 4, ModelPublicID: "grok-4.6", AccountID: &coldID}
-	other.maybePenalizeBuildMissingReasoning(skip, account.Credential{ID: 99, Provider: account.ProviderBuild}, "grok-4.6", nil)
+	if other.maybePenalizeBuildMissingReasoning(skip, account.Credential{ID: 99, Provider: account.ProviderBuild}, "grok-4.6", nil) {
+		t.Fatal("reasoning tokens > 0 must not report an audit penalty")
+	}
 	if selector.schedulingPenalized(99, time.Now().UTC()) {
 		t.Fatal("reasoning tokens > 0 must not penalize")
 	}
@@ -166,7 +170,9 @@ func TestMaybePenalizeSkipsToolResultTurnsForUserTurnModels(t *testing.T) {
 	}
 
 	userBody := []byte(`{"input":[{"role":"user","content":"write code"}]}`)
-	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", userBody)
+	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", userBody) {
+		t.Fatal("user-prompt last turn should still report an audit penalty")
+	}
 	if !selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
 		t.Fatal("user-prompt last turn should still penalize")
 	}

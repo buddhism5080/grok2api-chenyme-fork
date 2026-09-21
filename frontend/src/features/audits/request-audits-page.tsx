@@ -229,6 +229,7 @@ export function RequestAuditsPage() {
                   { value: "4xx", label: `4xx · ${t("audits.statusClientError")}` },
                   { value: "5xx", label: `5xx · ${t("audits.statusServerError")}` },
                   { value: "other", label: t("audits.statusOtherError") },
+                  { value: "missingReasoning", label: t("audits.statusMissingReasoning") },
                 ] },
                 { id: "mode", label: t("audits.mode"), value: modeFilter, onChange: setModeFilter, options: [
                   { value: "stream", label: t("audits.stream") },
@@ -703,6 +704,9 @@ function AuditStatus({ audit, onOpen }: { audit: AuditDTO; onOpen: () => void })
         <StatusCode statusCode={audit.statusCode} hasError={hasError} />
       )}
       <span className="block whitespace-nowrap text-[10px] text-muted-foreground">{mode}</span>
+      {audit.missingReasoningPenalty ? (
+        <span className="block whitespace-nowrap text-[10px] text-amber-700 dark:text-amber-300">{t("audits.missingReasoningPenalty")}</span>
+      ) : null}
     </>
   );
   return (
@@ -718,7 +722,7 @@ function AuditStatus({ audit, onOpen }: { audit: AuditDTO; onOpen: () => void })
         </button>
       </TooltipTrigger>
       <TooltipContent className="max-w-80 whitespace-normal break-words text-left leading-5" side="top">
-        {audit.errorCode || t("audits.viewDetails")}
+        {audit.errorCode || (audit.missingReasoningPenalty ? t("audits.missingReasoningPenalty") : t("audits.viewDetails"))}
       </TooltipContent>
     </Tooltip>
   );
