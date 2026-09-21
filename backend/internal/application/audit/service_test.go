@@ -721,3 +721,39 @@ func TestListCursorKeepsStableOrderAcrossEqualSortValues(t *testing.T) {
 		t.Fatalf("mismatched cursor error = %v", err)
 	}
 }
+
+func TestAuditFiltersAcceptMissingReasoningStatus(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "audit-missing-reasoning-filter.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	repo := relational.NewAuditRepository(database)
+	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+	if err := repo.CreateBatch(ctx, []auditdomain.Record{
+		{RequestID: "plain", ClientKeyID: 1, ModelRouteID: 1, StatusCode: 200, CreatedAt: now.Add(-2 * time.Minute)},
+		{RequestID: "penalized", ClientKeyID: 1, ModelRouteID: 1, StatusCode: 200, MissingReasoningPenalty: true, CreatedAt: now.Add(-time.Minute)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(repo, slog.Default(), 8, 4, time.Hour)
+	service.now = func() time.Time { return now }
+
+	result, err := service.ListCursor(ctx, "", 10, "", "24h", ListFilter{Status: "missingReasoning"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 || result.Items[0].RequestID != "penalized" {
+		t.Fatalf("list = %#v", result.Items)
+	}
+	if _, err := service.Summary(ctx, "", "24h", ListFilter{Status: "missingReasoning"}); err != nil {
+		t.Fatalf("summary error = %v", err)
+	}
+	if _, err := service.ListCursor(ctx, "", 10, "", "24h", ListFilter{Status: "not-a-status"}); !errors.Is(err, ErrInvalidFilter) {
+		t.Fatalf("unknown status error = %v", err)
+	}
+}
