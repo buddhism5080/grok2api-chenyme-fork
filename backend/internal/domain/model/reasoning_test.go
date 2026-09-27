@@ -23,6 +23,8 @@ func TestSupportedReasoningEffortsPerModel(t *testing.T) {
 		{model: "grok-4.7", want: []string{"low", "medium", "high", "xhigh"}},
 		{model: "Build/grok-4.7", want: []string{"low", "medium", "high", "xhigh"}},
 		{model: "Console/grok-4.7", want: []string{"low", "medium", "high", "xhigh"}},
+		{model: "grok-4.7-build-fast", want: []string{"low", "medium", "high", "xhigh"}},
+		{model: "Build/grok-4.7-build-fast", want: []string{"low", "medium", "high", "xhigh"}},
 		{model: "grok-build-0.1", want: []string{"none"}},
 		{model: GrokComposer25Fast, want: []string{"none"}},
 		{model: "unknown-model", want: []string{"none"}},
@@ -50,6 +52,9 @@ func TestSupportedReasoningEffortsPerModel(t *testing.T) {
 	if !SupportsReasoningEffort("grok-4.7", "xhigh") || !SupportsReasoningEffort("Build/grok-4.7-xhigh", "xhigh") {
 		t.Fatal("grok-4.7 must advertise xhigh")
 	}
+	if !SupportsReasoningEffort("grok-4.7-build-fast", "xhigh") || !SupportsReasoningEffort("Build/grok-4.7-build-fast-xhigh", "xhigh") {
+		t.Fatal("grok-4.7-build-fast must advertise the same xhigh effort as grok-4.7")
+	}
 	if !SupportsReasoningEffortForProvider(account.ProviderBuild, "grok-4.6", "xhigh") ||
 		!SupportsReasoningEffortForProvider(account.ProviderConsole, "grok-4.6", "xhigh") {
 		t.Fatal("grok-4.6 xhigh must remain available through Build and Console")
@@ -63,6 +68,9 @@ func TestSupportedReasoningEffortsPerModel(t *testing.T) {
 	}
 	if SupportsReasoningEffort("grok-4.7", "none") || SupportsReasoningEffort("grok-4.7", "max") {
 		t.Fatal("grok-4.7 must not advertise none/max")
+	}
+	if SupportsReasoningEffort("grok-4.7-build-fast", "none") || SupportsReasoningEffort("grok-4.7-build-fast", "max") {
+		t.Fatal("grok-4.7-build-fast must not advertise none/max")
 	}
 	if SupportsReasoningEffortForProvider(account.ProviderConsole, "grok-4.20-0309-reasoning", "low") ||
 		!SupportsReasoningEffortForProvider(account.ProviderBuild, "grok-4.20-0309-reasoning", "low") {
@@ -104,6 +112,9 @@ func TestParseReasoningModelAlias(t *testing.T) {
 		{name: "grok-4.6 rejects max", input: "grok-4.6-max", wantOK: false},
 		{name: "grok-4.7 xhigh", input: "grok-4.7-xhigh", wantBase: "grok-4.7", wantLevel: "xhigh", wantOK: true},
 		{name: "grok-4.7 rejects max", input: "grok-4.7-max", wantOK: false},
+		{name: "grok-4.7-build-fast xhigh", input: "grok-4.7-build-fast-xhigh", wantBase: "grok-4.7-build-fast", wantLevel: "xhigh", wantOK: true},
+		{name: "grok-4.7-build-fast rejects max", input: "grok-4.7-build-fast-max", wantOK: false},
+		{name: "grok-4.7-build-fast is not an alias", input: "grok-4.7-build-fast", wantOK: false},
 		{name: "prefixed base", input: "Build/grok-4.5-medium", wantBase: "Build/grok-4.5", wantLevel: "medium", wantOK: true},
 		{name: "base model not alias", input: "grok-4.5", wantOK: false},
 		{name: "single-level model no alias", input: "grok-build-0.1-none", wantOK: false},
@@ -129,6 +140,9 @@ func TestReasoningAliasPublicIDs(t *testing.T) {
 	}
 	if got := ReasoningAliasPublicIDs("grok-4.7"); len(got) != 4 || got[0] != "grok-4.7-low" || got[3] != "grok-4.7-xhigh" {
 		t.Fatalf("grok-4.7 aliases = %#v", got)
+	}
+	if got := ReasoningAliasPublicIDs("grok-4.7-build-fast"); len(got) != 4 || got[0] != "grok-4.7-build-fast-low" || got[3] != "grok-4.7-build-fast-xhigh" {
+		t.Fatalf("grok-4.7-build-fast aliases = %#v", got)
 	}
 	if got := ReasoningAliasPublicIDs("Build/grok-4.3"); len(got) != 4 || got[0] != "grok-4.3-none" {
 		t.Fatalf("grok-4.3 aliases = %#v", got)

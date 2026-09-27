@@ -219,6 +219,39 @@ func TestCodexCatalogUsesGrok47MetadataForBaseAndXHighAlias(t *testing.T) {
 	}
 }
 
+func TestCodexCatalogAlignsGrok47BuildFastWithGrok47(t *testing.T) {
+	items := []modelListItem{
+		{ID: "grok-4.7", Provider: account.ProviderBuild, Capability: modeldomain.CapabilityResponses},
+		{ID: "grok-4.7-build-fast", Provider: account.ProviderBuild, Capability: modeldomain.CapabilityResponses},
+		{ID: "grok-4.7-build-fast-xhigh", Provider: account.ProviderBuild, Capability: modeldomain.CapabilityResponses},
+	}
+	models := newCodexModelCatalog(items).Models
+	if len(models) != 3 {
+		t.Fatalf("model count = %d, want 3", len(models))
+	}
+	base, fast, alias := models[0], models[1], models[2]
+	if fast.ContextWindow != base.ContextWindow || fast.MaxContextWindow != base.MaxContextWindow {
+		t.Fatalf("grok-4.7-build-fast context window = %d/%d, want %d/%d", fast.ContextWindow, fast.MaxContextWindow, base.ContextWindow, base.MaxContextWindow)
+	}
+	if len(fast.InputModalities) != len(base.InputModalities) || fast.InputModalities[0] != "text" || fast.InputModalities[1] != "image" {
+		t.Fatalf("grok-4.7-build-fast input modalities = %#v, want %#v", fast.InputModalities, base.InputModalities)
+	}
+	if fast.DefaultReasoningLevel != base.DefaultReasoningLevel || len(fast.SupportedReasoningLevels) != len(base.SupportedReasoningLevels) {
+		t.Fatalf("grok-4.7-build-fast reasoning = default %q levels %#v, want default %q levels %#v", fast.DefaultReasoningLevel, fast.SupportedReasoningLevels, base.DefaultReasoningLevel, base.SupportedReasoningLevels)
+	}
+	for i := range base.SupportedReasoningLevels {
+		if fast.SupportedReasoningLevels[i].Effort != base.SupportedReasoningLevels[i].Effort {
+			t.Fatalf("reasoning level %d = %q, want %q", i, fast.SupportedReasoningLevels[i].Effort, base.SupportedReasoningLevels[i].Effort)
+		}
+	}
+	if !fast.SupportsReasoningSummaryParameter || !fast.SupportsReasoningSummaries {
+		t.Fatalf("grok-4.7-build-fast reasoning support missing: %#v", fast)
+	}
+	if alias.ContextWindow != fast.ContextWindow || alias.Description != fast.Description || alias.DefaultReasoningLevel != "xhigh" || len(alias.SupportedReasoningLevels) != 1 || alias.SupportedReasoningLevels[0].Effort != "xhigh" {
+		t.Fatalf("grok-4.7-build-fast-xhigh metadata = %#v", alias)
+	}
+}
+
 func TestCodexCatalogMarksConsoleGrok420AsFixedReasoning(t *testing.T) {
 	entry := newCodexModelCatalog([]modelListItem{{
 		ID: "grok-4.20-0309-reasoning", Provider: account.ProviderConsole, Capability: modeldomain.CapabilityResponses,
