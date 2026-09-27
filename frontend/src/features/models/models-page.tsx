@@ -58,17 +58,19 @@ export function ModelsPage() {
     capability: z.enum(["responses", "chat", "image", "image_edit", "video", "tts", "stt", "realtime"]),
     enabled: z.boolean(),
     bindingMode: z.boolean(),
+    bindAllAccounts: z.boolean(),
     accountIds: z.array(z.string()),
-  }).refine((value) => !value.bindingMode || value.accountIds.length > 0, { path: ["accountIds"], message: t("models.selectAccountRequired") });
+  }).refine((value) => !(value.bindingMode && value.bindAllAccounts), { path: ["bindAllAccounts"], message: t("models.bindAllAccounts") }).refine((value) => !value.bindingMode || value.accountIds.length > 0, { path: ["accountIds"], message: t("models.selectAccountRequired") });
   type ModelForm = z.infer<typeof schema>;
   const form = useForm<ModelForm>({
     resolver: zodResolver(schema),
-    defaultValues: { publicId: "", provider: "grok_build", upstreamModel: "", capability: "responses", enabled: true, bindingMode: false, accountIds: [] },
+    defaultValues: { publicId: "", provider: "grok_build", upstreamModel: "", capability: "responses", enabled: true, bindingMode: false, bindAllAccounts: false, accountIds: [] },
   });
   const modelEnabled = useWatch({ control: form.control, name: "enabled" });
   const selectedProvider = useWatch({ control: form.control, name: "provider" });
   const selectedCapability = useWatch({ control: form.control, name: "capability" });
   const bindingMode = useWatch({ control: form.control, name: "bindingMode" });
+  const bindAllAccounts = useWatch({ control: form.control, name: "bindAllAccounts" });
   const selectedAccountIDs = useWatch({ control: form.control, name: "accountIds" });
 
   const modelsQuery = useQuery({
@@ -85,9 +87,9 @@ export function ModelsPage() {
   const updateMutation = useMutation({
     mutationFn: (values: ModelForm) => {
       if (!editing) throw new Error(t("errors.generic"));
-      const input = { ...values, accountIds: values.bindingMode ? values.accountIds : [] };
+      const input = { ...values, accountIds: values.bindingMode ? values.accountIds : [], bindAllAccounts: values.bindAllAccounts && !values.bindingMode };
       if (editing === "new") return createModel(input);
-      return updateModel(editing.id, { publicId: input.publicId, enabled: input.enabled, accountIds: input.accountIds });
+      return updateModel(editing.id, { publicId: input.publicId, enabled: input.enabled, accountIds: input.accountIds, bindAllAccounts: input.bindAllAccounts });
     },
     onSuccess: () => {
       setSelected(new Set());
@@ -168,6 +170,7 @@ export function ModelsPage() {
       capability: model.capability,
       enabled: model.enabled,
       bindingMode: model.bindingMode,
+      bindAllAccounts: model.bindAllAccounts,
       accountIds: model.accountIds,
     });
   }
@@ -175,7 +178,7 @@ export function ModelsPage() {
   function beginCreate(): void {
     setEditing("new");
     setAccountSearch("");
-    form.reset({ publicId: "", provider: "grok_build", upstreamModel: "", capability: "responses", enabled: true, bindingMode: false, accountIds: [] });
+    form.reset({ publicId: "", provider: "grok_build", upstreamModel: "", capability: "responses", enabled: true, bindingMode: false, bindAllAccounts: false, accountIds: [] });
   }
 
   function toggleBoundAccount(id: string, checked: boolean): void {
@@ -317,7 +320,7 @@ export function ModelsPage() {
                   <TableCell className="text-center text-xs">
                     <div title={model.supportTitle}>
                       <span className="inline-flex items-baseline gap-1 tabular-nums"><span className={cn("font-medium", model.supportedMax > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>{model.supportedLabel}</span><span className="text-muted-foreground">/ {model.totalLabel}</span></span>
-                      <span className="mt-0.5 block text-[10px] text-muted-foreground">{t(model.bindingState === "bound" ? "models.boundAccounts" : model.bindingState === "automatic" ? "models.automaticAccounts" : "models.mixedAccounts")}</span>
+                      <span className="mt-0.5 block text-[10px] text-muted-foreground">{t(model.bindingState === "bound" ? "models.boundAccounts" : model.bindingState === "all" ? "models.allAccounts" : model.bindingState === "automatic" ? "models.automaticAccounts" : "models.mixedAccounts")}</span>
                     </div>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(model.lastSyncedAt, i18n.language)}</TableCell>
@@ -375,7 +378,14 @@ export function ModelsPage() {
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("models.bindAccountsDescription")}</p>
                   </div>
-                  <Switch className="mt-0.5 shrink-0" id="model-binding-mode" checked={bindingMode} onCheckedChange={(checked) => { form.setValue("bindingMode", checked); if (!checked) form.clearErrors("accountIds"); }} />
+                  <Switch className="mt-0.5 shrink-0" id="model-binding-mode" checked={bindingMode} onCheckedChange={(checked) => { form.setValue("bindingMode", checked); if (checked) form.setValue("bindAllAccounts", false); if (!checked) form.clearErrors("accountIds"); }} />
+                </div>
+                <div className="mt-3 flex items-start justify-between gap-4 border-t border-border/60 pt-3">
+                  <div className="min-w-0">
+                    <Label htmlFor="model-bind-all">{t("models.bindAllAccounts")}</Label>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("models.bindAllAccountsDescription")}</p>
+                  </div>
+                  <Switch className="mt-0.5 shrink-0" id="model-bind-all" checked={bindAllAccounts} onCheckedChange={(checked) => { form.setValue("bindAllAccounts", checked); if (checked) { form.setValue("bindingMode", false); form.clearErrors("accountIds"); } }} />
                 </div>
                 {bindingMode ? (
                   <div className="mt-3">
@@ -495,7 +505,7 @@ type ModelRouteGroup = {
   upstreamModel: string;
   capabilities: ModelDisplayCapability[];
   enabledState: "enabled" | "disabled" | "mixed";
-  bindingState: "automatic" | "bound" | "mixed";
+  bindingState: "automatic" | "bound" | "all" | "mixed";
   supportedMax: number;
   supportedLabel: string;
   totalLabel: string;
@@ -508,6 +518,7 @@ function newModelRouteGroup(value: ModelRouteGroupDTO, t: TFunction): ModelRoute
   const first = routes[0];
   const enabledCount = routes.filter((route) => route.enabled).length;
   const boundCount = routes.filter((route) => route.bindingMode).length;
+  const allCount = routes.filter((route) => route.bindAllAccounts).length;
   const supportedValues = routes.map((route) => route.supportedAccounts);
   const totalValues = routes.map((route) => route.totalAccounts);
   const supportedMin = Math.min(...supportedValues);
@@ -523,7 +534,7 @@ function newModelRouteGroup(value: ModelRouteGroupDTO, t: TFunction): ModelRoute
     upstreamModel: first.upstreamModel,
     capabilities: value.endpointCapabilities,
     enabledState: enabledCount === routes.length ? "enabled" : enabledCount === 0 ? "disabled" : "mixed",
-    bindingState: boundCount === routes.length ? "bound" : boundCount === 0 ? "automatic" : "mixed",
+    bindingState: allCount === routes.length ? "all" : boundCount === routes.length ? "bound" : allCount + boundCount === 0 ? "automatic" : "mixed",
     supportedMax,
     supportedLabel: supportedMin === supportedMax ? String(supportedMax) : `${supportedMin}–${supportedMax}`,
     totalLabel: totalMin === totalMax ? String(totalMax) : `${totalMin}–${totalMax}`,

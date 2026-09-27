@@ -43,6 +43,31 @@ func TestNewModelResponseSeparatesPublicAndUpstreamNames(t *testing.T) {
 	}
 }
 
+func TestNewModelResponseBindAllIsNotSpecificBinding(t *testing.T) {
+	response := newModelResponse(modeldomain.Route{
+		ID: 24, PublicID: "Build/grok-4.6", Provider: account.ProviderBuild, UpstreamModel: "grok-4.6",
+		Enabled: true, BindAllAccounts: true, BoundAccountIDs: []uint64{7}, SupportedAccounts: 2, TotalAccounts: 3,
+	})
+	if response.BindingMode || !response.BindAllAccounts || len(response.AccountIDs) != 0 || !response.Available || !response.CapabilityKnown {
+		t.Fatalf("bind-all response = %#v", response)
+	}
+}
+
+func TestUpdateRejectsBindAllTogetherWithSpecificAccounts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Params = gin.Params{{Key: "id", Value: "24"}}
+	context.Request = httptest.NewRequest(http.MethodPatch, "/api/admin/v1/models/24", strings.NewReader(`{"bindAllAccounts":true,"accountIds":["7"]}`))
+	context.Request.Header.Set("Content-Type", "application/json")
+
+	NewHandler(modelapp.NewService(nil, nil, nil, nil)).update(context)
+
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "不能同时开启") {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestNewModelGroupResponseKeepsAllMemberRoutes(t *testing.T) {
 	response := newModelGroupResponse(modelapp.RouteGroup{
 		Routes: []modeldomain.Route{

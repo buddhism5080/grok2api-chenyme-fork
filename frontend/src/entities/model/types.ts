@@ -8,6 +8,7 @@ export type ModelRouteDTO = {
   enabled: boolean;
   accountIds: string[];
   bindingMode: boolean;
+  bindAllAccounts: boolean;
   supportedAccounts: number;
   syncedAccounts: number;
   totalAccounts: number;

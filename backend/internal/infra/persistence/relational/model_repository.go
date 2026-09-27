@@ -88,13 +88,15 @@ const availableRoutePredicate = `
 			AND account.enabled = ?
 			AND account.auth_status = ?
 			AND (
-				EXISTS (
+				model_routes.bind_all_accounts = TRUE
+				OR EXISTS (
 					SELECT 1 FROM model_route_accounts binding
 					WHERE binding.model_route_id = model_routes.id
 						AND binding.account_id = account.id
 				)
 				OR (
-					NOT EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id)
+					model_routes.bind_all_accounts = FALSE
+					AND NOT EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id)
 					AND (
 						` + modelConsoleStaticSupportExpression + `
 						OR ` + modelWebBasicMediaStaticSupportExpression + `
@@ -167,13 +169,15 @@ const modelSharedPaidBuildScopeExpression = `(model_routes.provider = 'grok_buil
 	))`
 
 const modelRouteAccountCapabilityPredicate = `(
-	EXISTS (
+	model_routes.bind_all_accounts = TRUE
+	OR EXISTS (
 		SELECT 1 FROM model_route_accounts binding
 		WHERE binding.model_route_id = model_routes.id
 			AND binding.account_id = account.id
 	)
 	OR (
-		NOT EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id)
+		model_routes.bind_all_accounts = FALSE
+		AND NOT EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id)
 		AND (
 			` + modelConsoleStaticSupportExpression + `
 			OR ` + modelWebBasicMediaStaticSupportExpression + `
@@ -188,13 +192,15 @@ const modelRouteAccountCapabilityPredicate = `(
 )`
 
 const modelAvailableRouteAccountCapabilityPredicate = `(
-	EXISTS (
+	model_routes.bind_all_accounts = TRUE
+	OR EXISTS (
 		SELECT 1 FROM model_route_accounts binding
 		WHERE binding.model_route_id = model_routes.id
 			AND binding.account_id = account.id
 	)
 	OR (
-		NOT EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id)
+		model_routes.bind_all_accounts = FALSE
+		AND NOT EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id)
 		AND (
 			` + modelConsoleStaticSupportExpression + `
 			OR ` + modelWebBasicMediaStaticSupportExpression + `
@@ -242,7 +248,7 @@ func modelTierAvailabilityPredicateWithAvailability(tiers []string, activeOnly b
 
 const (
 	modelProviderPriorityExpression = "CASE model_routes.provider WHEN 'grok_build' THEN 0 WHEN 'grok_web' THEN 1 WHEN 'grok_console' THEN 2 ELSE 3 END"
-	modelSupportSortExpression      = `(SELECT COUNT(*) FROM provider_accounts account WHERE account.provider = model_routes.provider AND account.enabled = TRUE AND account.auth_status = 'active' AND (EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id AND binding.account_id = account.id) OR (NOT EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id) AND (` + modelConsoleStaticSupportExpression + ` OR ` + modelWebBasicMediaStaticSupportExpression + ` OR EXISTS (SELECT 1 FROM account_model_capabilities capability WHERE capability.account_id = account.id AND capability.upstream_model = model_routes.upstream_model) OR ` + modelSharedPaidBuildSupportSortExpression + `))))`
+	modelSupportSortExpression      = `(SELECT COUNT(*) FROM provider_accounts account WHERE account.provider = model_routes.provider AND account.enabled = TRUE AND account.auth_status = 'active' AND (model_routes.bind_all_accounts = TRUE OR EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id AND binding.account_id = account.id) OR (model_routes.bind_all_accounts = FALSE AND NOT EXISTS (SELECT 1 FROM model_route_accounts binding WHERE binding.model_route_id = model_routes.id) AND (` + modelConsoleStaticSupportExpression + ` OR ` + modelWebBasicMediaStaticSupportExpression + ` OR EXISTS (SELECT 1 FROM account_model_capabilities capability WHERE capability.account_id = account.id AND capability.upstream_model = model_routes.upstream_model) OR ` + modelSharedPaidBuildSupportSortExpression + `))))`
 	modelSyncedSortExpression       = `(SELECT MAX(sync.last_success_at) FROM provider_accounts account JOIN account_model_sync_states sync ON sync.account_id = account.id WHERE account.provider = model_routes.provider AND account.enabled = TRUE AND account.auth_status = 'active')`
 )
 
@@ -1074,6 +1080,7 @@ func (r *ModelRepository) Create(ctx context.Context, value model.Route, account
 	row := modelRouteModel{
 		PublicID: value.PublicID, Provider: string(value.Provider), UpstreamModel: value.UpstreamModel,
 		Capability: string(value.Capability), Origin: string(model.OriginManual), Enabled: value.Enabled,
+		BindAllAccounts: value.BindAllAccounts,
 	}
 	err := r.db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := ensureModelPublicIDNotAlias(tx, value.PublicID, 0); err != nil {
@@ -1121,8 +1128,9 @@ func (r *ModelRepository) Update(ctx context.Context, value model.Route, account
 			}
 		}
 		result := tx.Model(&modelRouteModel{}).Where("id = ?", value.ID).Updates(map[string]any{
-			"public_id": value.PublicID,
-			"enabled":   value.Enabled,
+			"public_id":         value.PublicID,
+			"enabled":           value.Enabled,
+			"bind_all_accounts": value.BindAllAccounts,
 		})
 		if result.Error != nil {
 			return mapError(result.Error)
@@ -1254,15 +1262,21 @@ func (r *ModelRepository) annotateAvailability(ctx context.Context, values []mod
 	}
 	err := r.db.db.WithContext(ctx).Raw(fmt.Sprintf(`
 		SELECT route.id AS route_id,
-			CASE WHEN COUNT(DISTINCT binding.account_id) > 0
+			CASE
+				WHEN route.bind_all_accounts THEN COUNT(DISTINCT CASE WHEN account.enabled = TRUE AND account.auth_status = ? THEN account.id END)
+				WHEN COUNT(DISTINCT binding.account_id) > 0
 				THEN COUNT(DISTINCT CASE WHEN account.enabled = TRUE AND account.auth_status = ? AND binding.account_id IS NOT NULL THEN account.id END)
 				ELSE COUNT(DISTINCT CASE WHEN account.enabled = TRUE AND account.auth_status = ? AND (`+modelConsoleStaticSupportAvailabilityExpression+` OR `+modelWebBasicMediaStaticSupportAvailabilityExpression+` OR capability.account_id IS NOT NULL OR `+modelSharedPaidBuildSupportAvailabilityExpression+`) THEN account.id END)
 			END AS supported_accounts,
-			CASE WHEN COUNT(DISTINCT binding.account_id) > 0
+			CASE
+				WHEN route.bind_all_accounts THEN COUNT(DISTINCT CASE WHEN account.enabled = TRUE AND account.auth_status = ? AND sync.last_success_at IS NOT NULL THEN account.id END)
+				WHEN COUNT(DISTINCT binding.account_id) > 0
 				THEN COUNT(DISTINCT CASE WHEN account.enabled = TRUE AND account.auth_status = ? AND binding.account_id IS NOT NULL AND sync.last_success_at IS NOT NULL THEN account.id END)
 				ELSE COUNT(DISTINCT CASE WHEN account.enabled = TRUE AND account.auth_status = ? AND sync.last_success_at IS NOT NULL THEN account.id END)
 			END AS synced_accounts,
-			CASE WHEN COUNT(DISTINCT binding.account_id) > 0
+			CASE
+				WHEN route.bind_all_accounts THEN COUNT(DISTINCT account.id)
+				WHEN COUNT(DISTINCT binding.account_id) > 0
 				THEN COUNT(DISTINCT binding.account_id)
 				ELSE COUNT(DISTINCT CASE WHEN account.enabled = TRUE AND account.auth_status = ? THEN account.id END)
 			END AS total_accounts,
@@ -1273,8 +1287,8 @@ func (r *ModelRepository) annotateAvailability(ctx context.Context, values []mod
 		LEFT JOIN account_model_sync_states sync ON sync.account_id = account.id
 		LEFT JOIN account_model_capabilities capability ON capability.account_id = account.id AND capability.upstream_model = route.upstream_model
 		WHERE route.id IN ?
-		GROUP BY route.id
-	`, lastSyncedExpression), account.AuthStatusActive, account.AuthStatusActive, account.AuthStatusActive, account.AuthStatusActive, account.AuthStatusActive, ids).Scan(&rows).Error
+		GROUP BY route.id, route.bind_all_accounts
+	`, lastSyncedExpression), account.AuthStatusActive, account.AuthStatusActive, account.AuthStatusActive, account.AuthStatusActive, account.AuthStatusActive, account.AuthStatusActive, account.AuthStatusActive, ids).Scan(&rows).Error
 	if err != nil {
 		return err
 	}

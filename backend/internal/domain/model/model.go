@@ -50,13 +50,16 @@ const (
 
 // Route 表示带 Provider 前缀的内部路由 ID 到真实上游模型名的稳定映射。
 type Route struct {
-	ID                uint64
-	PublicID          string
-	Provider          account.Provider
-	UpstreamModel     string
-	Capability        Capability
-	Origin            Origin
-	Enabled           bool
+	ID            uint64
+	PublicID      string
+	Provider      account.Provider
+	UpstreamModel string
+	Capability    Capability
+	Origin        Origin
+	Enabled       bool
+	// BindAllAccounts schedules every account of this route's provider and
+	// ignores capability snapshots. It is mutually exclusive with BoundAccountIDs.
+	BindAllAccounts   bool
 	BoundAccountIDs   []uint64
 	SupportedAccounts int
 	SyncedAccounts    int

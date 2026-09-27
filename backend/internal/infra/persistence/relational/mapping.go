@@ -230,7 +230,7 @@ func toRoutingBillingDomain(value billingModel) account.Billing {
 }
 
 func toModelDomain(value modelRouteModel) model.Route {
-	return model.Route{ID: value.ID, PublicID: value.PublicID, Provider: account.Provider(value.Provider), UpstreamModel: value.UpstreamModel, Capability: model.Capability(value.Capability), Origin: model.Origin(value.Origin), Enabled: value.Enabled, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+	return model.Route{ID: value.ID, PublicID: value.PublicID, Provider: account.Provider(value.Provider), UpstreamModel: value.UpstreamModel, Capability: model.Capability(value.Capability), Origin: model.Origin(value.Origin), Enabled: value.Enabled, BindAllAccounts: value.BindAllAccounts, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
 }
 
 func toClientKeyDomain(value clientKeyModel, allowedModels []uint64) clientkey.Key {
