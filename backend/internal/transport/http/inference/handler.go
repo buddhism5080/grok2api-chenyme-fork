@@ -1327,6 +1327,9 @@ func (h *Handler) writeProtocolResult(c *gin.Context, result *gateway.Result, st
 	}
 	if err != nil {
 		errorCode = classifyCopyError(c.Request.Context(), err)
+		if errors.Is(err, errUpstreamStreamIncomplete) && result.DropUpstreamConn != nil {
+			result.DropUpstreamConn()
+		}
 	}
 }
 

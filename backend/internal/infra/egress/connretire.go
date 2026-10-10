@@ -2,6 +2,7 @@ package egress
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -28,7 +29,9 @@ func WatchUpstreamConn(request *http.Request) (*http.Request, func(*http.Respons
 	trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) {
 		conn.store(info.Conn)
 	}}
-	return request.WithContext(httptrace.WithClientTrace(request.Context(), trace)), conn.retire
+	ctx := httptrace.WithClientTrace(request.Context(), trace)
+	ctx = context.WithValue(ctx, upstreamConnDropKey{}, conn.drop)
+	return request.WithContext(ctx), conn.retire
 }
 
 // watchBrowserConn is the fhttp equivalent. tls-client does not observe a
@@ -57,6 +60,33 @@ func (c *capturedConn) store(conn net.Conn) {
 	c.conn = conn
 	c.mu.Unlock()
 }
+
+func (c *capturedConn) drop() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	conn := c.conn
+	c.conn = nil
+	c.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
+	}
+}
+
+// UpstreamConnDropper returns a function that closes the TCP captured for this
+// response. Call it after a 200 stream ends without a terminal event, so the
+// next request dials again. Nil when this response did not go through
+// WatchUpstreamConn.
+func UpstreamConnDropper(response *http.Response) func() {
+	if response == nil || response.Request == nil {
+		return nil
+	}
+	drop, _ := response.Request.Context().Value(upstreamConnDropKey{}).(func())
+	return drop
+}
+
+type upstreamConnDropKey struct{}
 
 func (c *capturedConn) retire(response *http.Response) {
 	if c == nil {

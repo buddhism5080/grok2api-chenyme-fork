@@ -172,6 +172,9 @@ type Result struct {
 	MarkFirstToken      func()
 	RecordStreamFailure func(StreamFailureDiagnostic)
 	Finalize            func(usage Usage, responseID, errorCode string)
+	// DropUpstreamConn closes the upstream TCP after a 200 stream ends without
+	// a terminal event. Nil unless the provider captured that connection.
+	DropUpstreamConn func()
 }
 
 // StreamFailureDiagnostic safely projects a failure termination event returned in-stream after downstream 2xx headers.
@@ -1303,7 +1306,7 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 		// rotate accounts. Post-handoff arming is removed: once headers are
 		// written to the client, cross-account retry is impossible.
 		timingHandedOff = true
-		return &Result{StatusCode: response.StatusCode, Status: response.Status, Header: response.Header, Body: &finalizingBody{ReadCloser: response.Body, finalize: func() { finalize(Usage{}, "", "stream_closed") }}, MarkFirstToken: markFirstToken, RecordStreamFailure: recordStreamFailure, Finalize: finalize}
+		return &Result{StatusCode: response.StatusCode, Status: response.Status, Header: response.Header, Body: &finalizingBody{ReadCloser: response.Body, finalize: func() { finalize(Usage{}, "", "stream_closed") }}, MarkFirstToken: markFirstToken, RecordStreamFailure: recordStreamFailure, Finalize: finalize, DropUpstreamConn: response.DropUpstreamConn}
 	}
 	// fail_open retains at most one successful no-thinking stream. The account
 	// lease is released immediately; the read pump applies upstream backpressure

@@ -485,7 +485,15 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 			return &provider.Response{StatusCode: resp.StatusCode, Status: resp.Status, Header: resp.Header.Clone(), Body: resp.Body, UpstreamURL: reqURL, Diagnostic: diagnostic, RecoveredPrimaryFailure: recoveredPrimaryFailure, RecoveredAttempts: recoveredAttempts(recoveredPrimaryFailure, reasoningRecovery), RateLimit: rateLimit, ModelCatalogChanged: modelCatalogChanged}, nil
 		}
 	}
-	return &provider.Response{StatusCode: resp.StatusCode, Status: resp.Status, Header: resp.Header.Clone(), Body: resp.Body, UpstreamURL: reqURL, Diagnostic: rateLimitDiagnostic, RecoveredPrimaryFailure: recoveredPrimaryFailure, RecoveredAttempts: recoveredAttempts(recoveredPrimaryFailure, reasoningRecovery), RateLimit: rateLimit, ModelCatalogChanged: modelCatalogChanged}, nil
+	return annotateUpstreamConnDrop(resp, &provider.Response{StatusCode: resp.StatusCode, Status: resp.Status, Header: resp.Header.Clone(), Body: resp.Body, UpstreamURL: reqURL, Diagnostic: rateLimitDiagnostic, RecoveredPrimaryFailure: recoveredPrimaryFailure, RecoveredAttempts: recoveredAttempts(recoveredPrimaryFailure, reasoningRecovery), RateLimit: rateLimit, ModelCatalogChanged: modelCatalogChanged}), nil
+}
+
+func annotateUpstreamConnDrop(resp *http.Response, out *provider.Response) *provider.Response {
+	if out == nil {
+		return nil
+	}
+	out.DropUpstreamConn = infraegress.UpstreamConnDropper(resp)
+	return out
 }
 
 func recoveredAttempts(primary *provider.DiagnosticResponse, recovery reasoningRecoveryOutcome) []provider.RecoveredAttempt {

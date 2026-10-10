@@ -173,6 +173,78 @@ func TestBrowserClientDropsConnOn429(t *testing.T) {
 	}
 }
 
+func TestStreamIncompleteDropClosesConn(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		drop bool
+		want int32
+	}{
+		{name: "drop dials again", drop: true, want: 2},
+		{name: "keep reuses", drop: false, want: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var hits atomic.Int32
+			listener := &countingListener{}
+			base, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			listener.Listener = base
+			server := &http.Server{Handler: http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				if hits.Add(1) == 1 {
+					writer.Header().Set("Content-Type", "text/event-stream")
+					writer.WriteHeader(http.StatusOK)
+					_, _ = io.WriteString(writer, "data: {\"type\":\"response.output_item.done\"}\n\n")
+					return
+				}
+				writer.WriteHeader(http.StatusOK)
+				_, _ = io.WriteString(writer, "second")
+			})}
+			done := make(chan error, 1)
+			go func() { done <- server.Serve(listener) }()
+			t.Cleanup(func() {
+				_ = server.Close()
+				<-done
+			})
+			client, err := newBuildClient("", time.Minute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(client.CloseIdleConnections)
+			lease := &Lease{client: client, Scope: egressdomain.ScopeBuild}
+			request, err := http.NewRequest(http.MethodPost, "http://"+listener.Addr().String()+"/v1/responses", http.NoBody)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := lease.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(payload) == "" {
+				t.Fatal("empty first body")
+			}
+			if test.drop {
+				drop := UpstreamConnDropper(response)
+				if drop == nil {
+					t.Fatal("missing upstream conn dropper")
+				}
+				drop()
+			}
+			_ = response.Body.Close()
+			if body := doLease(t, lease, "http://"+listener.Addr().String()+"/v1/responses"); body != "second" {
+				t.Fatalf("second body = %q", body)
+			}
+			if got := listener.n.Load(); got != test.want {
+				t.Fatalf("tcp dials = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
 func doLease(t *testing.T, lease *Lease, url string) string {
 	t.Helper()
 	request, err := http.NewRequest(http.MethodPost, url, http.NoBody)
