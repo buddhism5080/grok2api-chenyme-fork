@@ -182,7 +182,10 @@ func newBuildDirectTransport(responseHeaderTimeout time.Duration) *buildDirectTr
 }
 
 func (t *buildDirectTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	return t.current.Load().RoundTrip(request)
+	request, retireConn := infraegress.WatchUpstreamConn(request)
+	response, err := t.current.Load().RoundTrip(request)
+	retireConn(response)
+	return response, err
 }
 
 func (t *buildDirectTransport) UpdateResponseHeaderTimeout(responseHeaderTimeout time.Duration) {

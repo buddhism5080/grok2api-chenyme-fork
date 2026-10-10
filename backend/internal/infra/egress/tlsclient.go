@@ -126,11 +126,15 @@ func (c *browserClient) Do(request *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	var retireConn func(*http.Response)
+	frequest, retireConn = watchBrowserConn(frequest)
 	fresponse, err := c.inner.Do(frequest)
 	if err != nil {
 		return nil, err
 	}
-	return fromFHTTPResponse(fresponse), nil
+	response := fromFHTTPResponse(fresponse)
+	retireConn(response)
+	return response, nil
 }
 
 func fromFHTTPResponse(fresponse *fhttp.Response) *http.Response {

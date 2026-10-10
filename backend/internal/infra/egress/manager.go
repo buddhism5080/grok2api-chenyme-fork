@@ -113,7 +113,16 @@ func (l *Lease) doRequest(request *http.Request, invalidateForbidden bool) (*htt
 	if l.Scope == domain.ScopeBuild && l.freshTunnel {
 		request.Close = true
 	}
+	// browserClient speaks fhttp; a net/http trace on this request is ignored
+	// there, and browserClient.Do retires the connection itself.
+	var retireConn func(*http.Response)
+	if _, browser := l.client.(*browserClient); !browser {
+		request, retireConn = WatchUpstreamConn(request)
+	}
 	response, err := l.do(request)
+	if retireConn != nil {
+		retireConn(response)
+	}
 	recordPhysicalCall(request.Context(), response, err)
 	if invalidateForbidden && err == nil && response != nil && response.StatusCode == http.StatusForbidden {
 		l.InvalidateClearance()
