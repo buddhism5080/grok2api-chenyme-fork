@@ -208,6 +208,7 @@ type Service struct {
 	responses                   repository.ResponseRepository
 	maxAttempts                 atomic.Int64
 	videoMaxAttempts            atomic.Int64
+	buildStreamFirstCharTimeout atomic.Int64
 	buildForbiddenReauth        atomic.Pointer[buildForbiddenReauthPolicy]
 	requestTimeout              atomic.Int64
 	mediaJobs                   repository.MediaJobRepository
@@ -486,6 +487,25 @@ func (s *Service) UpdateMaxAttempts(maxAttempts int) { s.maxAttempts.Store(int64
 // 0 is treated as the general default pool size for legacy configs.
 func (s *Service) UpdateVideoMaxAttempts(maxAttempts int) {
 	s.videoMaxAttempts.Store(int64(maxAttempts))
+}
+
+// UpdateBuildStreamFirstCharTimeout hot-reloads the Build first-content-token
+// deadline. Zero disables the wait; capacity peek still runs.
+func (s *Service) UpdateBuildStreamFirstCharTimeout(value time.Duration) {
+	if s == nil {
+		return
+	}
+	if value < 0 {
+		value = 0
+	}
+	s.buildStreamFirstCharTimeout.Store(int64(value))
+}
+
+func (s *Service) buildStreamFirstCharDeadline() time.Duration {
+	if s == nil {
+		return 0
+	}
+	return time.Duration(s.buildStreamFirstCharTimeout.Load())
 }
 
 // UpdateMarkBuildChatDeniedAsReauth 热更新 Build chat 永久拒绝是否标 reauthRequired。
@@ -1644,6 +1664,45 @@ attemptLoop:
 			continue
 		}
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			if input.Streaming && credential.Provider == accountdomain.ProviderBuild {
+				waitStarted := time.Now()
+				var prefix []byte
+				var rest io.ReadCloser
+				var waitErr error
+				// Full configured deadline on every account attempt.
+				if deadline := s.buildStreamFirstCharDeadline(); deadline > 0 {
+					prefix, rest, waitErr = awaitFirstContentToken(response.Body, deadline, firstTokenKindForOperation(operation))
+				} else {
+					prefix, rest, waitErr = peekEmptyCapacityStream(response.Body)
+				}
+				if waitErr != nil {
+					if rest != nil {
+						_ = rest.Close()
+					} else {
+						_ = response.Body.Close()
+					}
+					lease.Release()
+					lastErr = waitErr
+					lastFailure = newTransportUpstreamFailure(waitErr, credential.ID, credential.Name)
+					_ = failureAttempts.captureResponse(credential, waitStarted, nil, waitErr)
+					if errors.Is(waitErr, errUpstreamModelAtCapacity) {
+						s.logger.Warn("upstream_model_at_capacity_retry", "request_id", input.RequestID, "account_id", credential.ID)
+						if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
+							break
+						}
+						continue
+					}
+					s.selector.MarkFailure(ctx, credential, lastFailure.HTTPStatus, 0)
+					if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
+						break
+					}
+					continue
+				}
+				response.Body = newEmptyCapacityReplay(prefix, rest)
+				if firstToken != nil {
+					firstToken.mark()
+				}
+			}
 			s.selector.markSuccess(ctx, credential, lease.QuotaProbe)
 			if qualityHoldEnabled {
 				replay, verdict, peekUsage, _, peekErr := peekQualityStream(ctx, response.Body, qualityProtocolForOperation(operation), holdCfg)

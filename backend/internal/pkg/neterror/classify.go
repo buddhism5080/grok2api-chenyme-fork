@@ -20,6 +20,10 @@ var ErrUpstreamStreamIdleTimeout = errors.New("upstream stream idle timeout")
 // policy without penalizing ordinary request aborts.
 var ErrUpstreamResponseEmpty = errors.New("upstream response body is empty")
 
+// ErrUpstreamFirstCharTimeout is attached when a Build stream is aborted
+// because no content or reasoning delta arrived within the configured window.
+var ErrUpstreamFirstCharTimeout = errors.New("upstream stream first char timeout")
+
 // ErrUpstreamOutputLoop is raised when the gateway terminates a stream because
 // the model repeated the same visible or reasoning delta past the doom-loop
 // guard. It is distinct from a transport cut (upstream_stream_interrupted).
@@ -60,6 +64,11 @@ func IsUpstreamResponseEmpty(err error) bool {
 	return errors.Is(err, ErrUpstreamResponseEmpty)
 }
 
+// IsUpstreamFirstCharTimeout reports whether err is the Build first-content-token timeout.
+func IsUpstreamFirstCharTimeout(err error) bool {
+	return errors.Is(err, ErrUpstreamFirstCharTimeout)
+}
+
 // IsUpstreamOutputLoop reports whether the stream was aborted by the repeated
 // delta doom-loop guard rather than a transport interrupt.
 func IsUpstreamOutputLoop(err error) bool {
@@ -89,12 +98,12 @@ func IdleTimeoutObservedData(err error) bool {
 // as the client hanging up. Pre-header client cancel still maps to 499
 // request_canceled; a 2xx stream copy uses client_stream_interrupted.
 func IsClientRequestCancel(ctx context.Context, err error) bool {
-	if IsUpstreamStreamIdleTimeout(err) {
+	if IsUpstreamStreamIdleTimeout(err) || IsUpstreamFirstCharTimeout(err) {
 		return false
 	}
 	if ctx != nil {
 		cause := context.Cause(ctx)
-		if IsUpstreamStreamIdleTimeout(cause) {
+		if IsUpstreamStreamIdleTimeout(cause) || IsUpstreamFirstCharTimeout(cause) {
 			return false
 		}
 		if ctx.Err() != nil {

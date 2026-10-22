@@ -215,20 +215,29 @@ func ClassifyUpstreamHTTPError(status int, body []byte) (string, string) {
 func newTransportUpstreamFailure(err error, accountID uint64, accountName string) *UpstreamFailure {
 	code, message := "upstream_network_error", "连接上游服务失败"
 	status := http.StatusBadGateway
+	accountScoped := false
 	if neterrorpkg.IsResponseHeaderTimeout(err) {
 		status, code, message = http.StatusGatewayTimeout, "upstream_header_timeout", "等待上游响应头超时"
+	} else if neterrorpkg.IsUpstreamFirstCharTimeout(err) {
+		status, code, message = http.StatusGatewayTimeout, "upstream_first_char_timeout", "等待上游首字超时"
+		accountScoped = true
 	} else if neterrorpkg.IsUpstreamStreamIdleTimeout(err) {
 		status, code, message = http.StatusGatewayTimeout, "upstream_stream_idle_timeout", "上游响应长时间无数据"
 	} else if neterrorpkg.IsUpstreamResponseEmpty(err) {
 		status, code, message = http.StatusBadGateway, "upstream_response_empty", "上游响应为空"
 	} else if errors.Is(err, errQualityEmptyStream) {
 		status, code, message = http.StatusBadGateway, "upstream_stream_empty", "上游流式响应为空"
+	} else if errors.Is(err, errUpstreamModelAtCapacity) {
+		return &UpstreamFailure{
+			HTTPStatus: http.StatusServiceUnavailable, Code: "upstream_model_at_capacity", PublicMessage: "上游模型当前容量不足",
+			AccountID: accountID, AccountName: accountName, AccountScoped: true, Fingerprint: "upstream_model_at_capacity", Cause: err,
+		}
 	} else if errors.Is(err, context.DeadlineExceeded) {
 		code, message = "upstream_timeout", "上游服务响应超时"
 	}
 	return &UpstreamFailure{
 		HTTPStatus: status, Code: code, PublicMessage: message,
-		AccountID: accountID, AccountName: accountName, Fingerprint: code, Cause: err,
+		AccountID: accountID, AccountName: accountName, AccountScoped: accountScoped, Fingerprint: code, Cause: err,
 	}
 }
 

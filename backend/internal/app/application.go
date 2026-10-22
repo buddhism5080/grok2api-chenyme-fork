@@ -29,6 +29,7 @@ import (
 	updatecheckapp "github.com/chenyme/grok2api/backend/internal/application/updatecheck"
 	"github.com/chenyme/grok2api/backend/internal/buildinfo"
 	"github.com/chenyme/grok2api/backend/internal/domain/account"
+	settingsdomain "github.com/chenyme/grok2api/backend/internal/domain/settings"
 	"github.com/chenyme/grok2api/backend/internal/infra/config"
 	infraegress "github.com/chenyme/grok2api/backend/internal/infra/egress"
 	inframedia "github.com/chenyme/grok2api/backend/internal/infra/media"
@@ -360,6 +361,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 	gatewayService.UpdateVideoMaxAttempts(cfg.Routing.VideoMaxAttempts)
 	gatewayService.UpdateMarkBuildChatDeniedAsReauth(cfg.Routing.MarkBuildChatDeniedAsReauth)
 	gatewayService.UpdateBuildMissingReasoningPenalty(cfg.Routing.BuildMissingReasoningPenaltyEnabled, cfg.Routing.BuildMissingReasoningPenaltyModelIDs, cfg.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs)
+	gatewayService.UpdateBuildStreamFirstCharTimeout(settingsdomain.EffectiveBuildStreamFirstCharTimeout(cfg.Provider.Build.StreamFirstCharTimeoutEnabled, cfg.Provider.Build.StreamFirstCharTimeout.Value()))
 	gatewayService.SetLogger(logger)
 	egressService.SetQualityProber(gatewayService)
 	gatewayService.UpdateBuildForbiddenReauthPolicy(cfg.Accounts.MarkBuildForbiddenReauth, cfg.Accounts.BuildForbiddenReauthCodes)
@@ -408,6 +410,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 		selector.UpdateConfig(next.Routing.StickyTTL.Value(), next.Routing.CooldownBase.Value(), next.Routing.CooldownMax.Value(), next.Routing.CapacityWait.Value())
 		selector.UpdatePreferFreeBuild(next.Routing.PreferFreeBuild)
 		selector.UpdateBuildUsagePenaltyTokenThreshold(next.Routing.BuildUsagePenaltyTokenThreshold)
+		gatewayService.UpdateBuildStreamFirstCharTimeout(settingsdomain.EffectiveBuildStreamFirstCharTimeout(next.Provider.Build.StreamFirstCharTimeoutEnabled, next.Provider.Build.StreamFirstCharTimeout.Value()))
 		selector.UpdateSegmentedSelector(next.Routing.SegmentedSelectorEnabled, next.Routing.SegmentedMinCandidates, next.Routing.SegmentedWindowSize)
 		egressService.ConfigureAutoAssignBounds(next.Routing.AutoAssignMaxNodeShare, next.Routing.AutoAssignMaxMigrationShare)
 		selector.UpdateExcludeBuildBotFlaggedFromScheduling(next.Accounts.ExcludeBuildBotFlaggedFromScheduling)

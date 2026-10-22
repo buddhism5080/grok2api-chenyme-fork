@@ -11,6 +11,11 @@ const (
 	MinBuildStreamIdleTimeout     = 30 * time.Second
 	MaxBuildStreamIdleTimeout     = 10 * time.Minute
 
+	DefaultBuildStreamFirstCharTimeoutEnabled = false
+	DefaultBuildStreamFirstCharTimeout        = 15 * time.Second
+	MinBuildStreamFirstCharTimeout            = 5 * time.Second
+	MaxBuildStreamFirstCharTimeout            = 60 * time.Second
+
 	DefaultWebStreamIdleTimeout     = 90 * time.Second
 	DefaultConsoleStreamIdleTimeout = 2 * time.Minute
 	MinProviderStreamIdleTimeout    = 30 * time.Second
@@ -24,6 +29,18 @@ const (
 func NormalizeWebFreeVideoDurationCap(value int) int {
 	if value < MinWebFreeVideoDurationCap || value > MaxWebFreeVideoDurationCap {
 		return DefaultWebFreeVideoDurationCap
+	}
+	return value
+}
+
+// EffectiveBuildStreamFirstCharTimeout returns the live deadline. Zero means
+// the wait is off; capacity peek still runs.
+func EffectiveBuildStreamFirstCharTimeout(enabled bool, value time.Duration) time.Duration {
+	if !enabled {
+		return 0
+	}
+	if value < MinBuildStreamFirstCharTimeout || value > MaxBuildStreamFirstCharTimeout {
+		return DefaultBuildStreamFirstCharTimeout
 	}
 	return value
 }
@@ -106,6 +123,11 @@ type ProviderBuildConfig struct {
 	UserAgent             string
 	ResponseHeaderTimeout time.Duration
 	StreamIdleTimeout     time.Duration
+	// StreamFirstCharTimeoutEnabled gates the wait from response headers to the
+	// first content or reasoning delta. Default false.
+	StreamFirstCharTimeoutEnabled bool
+	// StreamFirstCharTimeout is that wait. Enforced only when the switch is on.
+	StreamFirstCharTimeout time.Duration
 }
 
 // RoutingConfig 定义会话粘性、冷却和故障切换边界。
