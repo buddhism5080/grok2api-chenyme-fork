@@ -22,6 +22,7 @@ export type SettingsConfigDTO = {
   routing: {
     stickyTTL: string; cooldownBase: string; cooldownMax: string; capacityWait: string; maxAttempts: number; videoMaxAttempts: number; preferFreeBuild: boolean; markBuildChatDeniedAsReauth: boolean;
     accountIsolatedConnections: boolean;
+    buildUsagePenaltyTokenThreshold: number;
     segmentedSelector: { enabled: boolean; minCandidates: number; windowSize: number };
   };
   audit: { bufferSize: number; batchSize: number; flushInterval: string; commitDelayMS: number; retentionDays?: number };
@@ -132,6 +133,7 @@ const settingsConfigValidator = hasShape({
   routing: hasShape({
     stickyTTL: isString, cooldownBase: isString, cooldownMax: isString, capacityWait: isString, maxAttempts: isNumber, videoMaxAttempts: isNumber, preferFreeBuild: isBoolean, markBuildChatDeniedAsReauth: isBoolean,
     accountIsolatedConnections: isOptional(isBoolean),
+    buildUsagePenaltyTokenThreshold: isOptional(isNumber),
     segmentedSelector: isOptional(hasShape({ enabled: isBoolean, minCandidates: isNumber, windowSize: isNumber })),
   }),
   audit: hasShape({
@@ -187,6 +189,7 @@ function withSettingsDefaults(snapshot: SettingsSnapshotDTO): SettingsSnapshotDT
         ...snapshot.config.routing,
         markBuildChatDeniedAsReauth: snapshot.config.routing.markBuildChatDeniedAsReauth ?? false,
         accountIsolatedConnections: snapshot.config.routing.accountIsolatedConnections ?? false,
+        buildUsagePenaltyTokenThreshold: snapshot.config.routing.buildUsagePenaltyTokenThreshold ?? 0,
         segmentedSelector: {
           enabled: segmentedSelector.enabled ?? true,
           minCandidates: segmentedSelector.minCandidates || 3000,

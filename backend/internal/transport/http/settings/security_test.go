@@ -63,6 +63,26 @@ func TestSettingsResponseIncludesPreferFreeBuild(t *testing.T) {
 	}
 }
 
+func TestSettingsResponseIncludesBuildUsagePenaltyTokenThreshold(t *testing.T) {
+	response := newSettingsResponse(settingsapp.Snapshot{Config: settingsapp.EditableConfig{
+		Routing: settingsapp.RoutingConfig{BuildUsagePenaltyTokenThreshold: 250_000},
+	}})
+	if response.Config.Routing.BuildUsagePenaltyTokenThreshold == nil || *response.Config.Routing.BuildUsagePenaltyTokenThreshold != 250_000 {
+		t.Fatal("buildUsagePenaltyTokenThreshold was lost from settings response")
+	}
+}
+
+func TestLegacySettingsRequestMayOmitBuildUsagePenaltyTokenThreshold(t *testing.T) {
+	var dto settingsConfigDTO
+	if err := json.Unmarshal([]byte(`{"routing":{"stickyTTL":"1h"}}`), &dto); err != nil {
+		t.Fatal(err)
+	}
+	input := dto.toApplication()
+	if input.Routing.BuildUsagePenaltyTokenThresholdProvided {
+		t.Fatal("missing buildUsagePenaltyTokenThreshold was treated as an explicit update")
+	}
+}
+
 func TestSettingsResponseIncludesMarkBuildChatDeniedAsReauth(t *testing.T) {
 	response := newSettingsResponse(settingsapp.Snapshot{Config: settingsapp.EditableConfig{
 		Routing: settingsapp.RoutingConfig{MarkBuildChatDeniedAsReauth: true},

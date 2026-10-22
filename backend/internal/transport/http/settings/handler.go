@@ -98,16 +98,17 @@ type batchConfigDTO struct {
 }
 
 type routingConfigDTO struct {
-	StickyTTL                   string                      `json:"stickyTTL"`
-	CooldownBase                string                      `json:"cooldownBase"`
-	CooldownMax                 string                      `json:"cooldownMax"`
-	CapacityWait                string                      `json:"capacityWait"`
-	MaxAttempts                 int                         `json:"maxAttempts"`
-	VideoMaxAttempts            int                         `json:"videoMaxAttempts"`
-	PreferFreeBuild             bool                        `json:"preferFreeBuild"`
-	MarkBuildChatDeniedAsReauth *bool                       `json:"markBuildChatDeniedAsReauth,omitempty"`
-	AccountIsolatedConnections  *bool                       `json:"accountIsolatedConnections,omitempty"`
-	SegmentedSelector           *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
+	BuildUsagePenaltyTokenThreshold *int64                      `json:"buildUsagePenaltyTokenThreshold,omitempty"`
+	StickyTTL                       string                      `json:"stickyTTL"`
+	CooldownBase                    string                      `json:"cooldownBase"`
+	CooldownMax                     string                      `json:"cooldownMax"`
+	CapacityWait                    string                      `json:"capacityWait"`
+	MaxAttempts                     int                         `json:"maxAttempts"`
+	VideoMaxAttempts                int                         `json:"videoMaxAttempts"`
+	PreferFreeBuild                 bool                        `json:"preferFreeBuild"`
+	MarkBuildChatDeniedAsReauth     *bool                       `json:"markBuildChatDeniedAsReauth,omitempty"`
+	AccountIsolatedConnections      *bool                       `json:"accountIsolatedConnections,omitempty"`
+	SegmentedSelector               *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
 }
 
 type segmentedSelectorConfigDTO struct {
@@ -231,11 +232,13 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 		Routing: settingsapp.RoutingConfig{
 			StickyTTL: value.Routing.StickyTTL, CooldownBase: value.Routing.CooldownBase,
 			CooldownMax: value.Routing.CooldownMax, CapacityWait: value.Routing.CapacityWait, MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-			PreferFreeBuild:                     value.Routing.PreferFreeBuild,
-			MarkBuildChatDeniedAsReauth:         boolValue(value.Routing.MarkBuildChatDeniedAsReauth),
-			MarkBuildChatDeniedAsReauthProvided: value.Routing.MarkBuildChatDeniedAsReauth != nil,
-			AccountIsolatedConnections:          boolValue(value.Routing.AccountIsolatedConnections),
-			AccountIsolatedConnectionsProvided:  value.Routing.AccountIsolatedConnections != nil,
+			BuildUsagePenaltyTokenThreshold:         int64Value(value.Routing.BuildUsagePenaltyTokenThreshold),
+			BuildUsagePenaltyTokenThresholdProvided: value.Routing.BuildUsagePenaltyTokenThreshold != nil,
+			PreferFreeBuild:                         value.Routing.PreferFreeBuild,
+			MarkBuildChatDeniedAsReauth:             boolValue(value.Routing.MarkBuildChatDeniedAsReauth),
+			MarkBuildChatDeniedAsReauthProvided:     value.Routing.MarkBuildChatDeniedAsReauth != nil,
+			AccountIsolatedConnections:              boolValue(value.Routing.AccountIsolatedConnections),
+			AccountIsolatedConnectionsProvided:      value.Routing.AccountIsolatedConnections != nil,
 		},
 		Audit: settingsapp.AuditConfig{
 			BufferSize: value.Audit.BufferSize, BatchSize: value.Audit.BatchSize, FlushInterval: value.Audit.FlushInterval, CommitDelayMS: value.Audit.CommitDelayMS,
@@ -319,9 +322,10 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 			Routing: routingConfigDTO{
 				StickyTTL: config.Routing.StickyTTL, CooldownBase: config.Routing.CooldownBase,
 				CooldownMax: config.Routing.CooldownMax, CapacityWait: config.Routing.CapacityWait, MaxAttempts: config.Routing.MaxAttempts, VideoMaxAttempts: config.Routing.VideoMaxAttempts,
-				MarkBuildChatDeniedAsReauth: boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),
-				PreferFreeBuild:             config.Routing.PreferFreeBuild,
-				AccountIsolatedConnections:  boolPointer(config.Routing.AccountIsolatedConnections),
+				BuildUsagePenaltyTokenThreshold: int64Pointer(config.Routing.BuildUsagePenaltyTokenThreshold),
+				MarkBuildChatDeniedAsReauth:     boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),
+				PreferFreeBuild:                 config.Routing.PreferFreeBuild,
+				AccountIsolatedConnections:      boolPointer(config.Routing.AccountIsolatedConnections),
 				SegmentedSelector: &segmentedSelectorConfigDTO{
 					Enabled: config.Routing.SegmentedSelector.Enabled, MinCandidates: config.Routing.SegmentedSelector.MinCandidates,
 					WindowSize: config.Routing.SegmentedSelector.WindowSize,
@@ -364,6 +368,15 @@ func optionalString(value *string) string {
 func stringPointer(value string) *string { return &value }
 
 func boolPointer(value bool) *bool { return &value }
+
+func int64Pointer(value int64) *int64 { return &value }
+
+func int64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
 
 func boolValue(value *bool) bool {
 	if value == nil {

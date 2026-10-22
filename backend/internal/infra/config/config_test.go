@@ -151,6 +151,9 @@ bootstrapAdmin:
 	if cfg.Routing.PreferFreeBuild {
 		t.Fatal("preferFreeBuild should retain its false default when omitted from YAML")
 	}
+	if cfg.Routing.BuildUsagePenaltyTokenThreshold != 0 {
+		t.Fatal("buildUsagePenaltyTokenThreshold should default to 0 when omitted from YAML")
+	}
 	if !cfg.Routing.SegmentedSelectorEnabled || cfg.Routing.SegmentedMinCandidates != 3000 || cfg.Routing.SegmentedWindowSize != 64 {
 		t.Fatalf("segmented selector defaults = %#v", cfg.Routing)
 	}

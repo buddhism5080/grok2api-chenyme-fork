@@ -108,9 +108,13 @@ type RoutingConfig struct {
 	AccountIsolatedConnections          bool
 	// AccountIsolatedConnectionsProvided preserves the current value when an
 	// older management client omits the newly added field.
-	AccountIsolatedConnectionsProvided bool
-	SegmentedSelector                  SegmentedSelectorConfig
-	SegmentedSelectorProvided          bool
+	// BuildUsagePenaltyTokenThreshold is the Build Free input+output token latch.
+	// 0 disables the guard. Older clients omit the field; Provided preserves the current value.
+	BuildUsagePenaltyTokenThreshold         int64
+	BuildUsagePenaltyTokenThresholdProvided bool
+	AccountIsolatedConnectionsProvided      bool
+	SegmentedSelector                       SegmentedSelectorConfig
+	SegmentedSelectorProvided               bool
 }
 
 type SegmentedSelectorConfig struct {
@@ -404,13 +408,14 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 	base.Routing = config.RoutingConfig{
 		StickyTTL: config.Duration(value.Routing.StickyTTL), CooldownBase: config.Duration(value.Routing.CooldownBase),
 		CooldownMax: config.Duration(value.Routing.CooldownMax), CapacityWait: config.Duration(capacityWait), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-		MarkBuildChatDeniedAsReauth: value.Routing.MarkBuildChatDeniedAsReauth,
-		PreferFreeBuild:             value.Routing.PreferFreeBuild,
-		AccountIsolatedConnections:  accountIsolatedConnections,
-		SegmentedSelectorEnabled:    segmentedEnabled,
-		SegmentedMinCandidates:      segmentedMinCandidates,
-		SegmentedWindowSize:         segmentedWindowSize,
-		ReasoningReplayEnabled:      base.Routing.ReasoningReplayEnabled, ReasoningReplayTTL: base.Routing.ReasoningReplayTTL,
+		BuildUsagePenaltyTokenThreshold: value.Routing.BuildUsagePenaltyTokenThreshold,
+		MarkBuildChatDeniedAsReauth:     value.Routing.MarkBuildChatDeniedAsReauth,
+		PreferFreeBuild:                 value.Routing.PreferFreeBuild,
+		AccountIsolatedConnections:      accountIsolatedConnections,
+		SegmentedSelectorEnabled:        segmentedEnabled,
+		SegmentedMinCandidates:          segmentedMinCandidates,
+		SegmentedWindowSize:             segmentedWindowSize,
+		ReasoningReplayEnabled:          base.Routing.ReasoningReplayEnabled, ReasoningReplayTTL: base.Routing.ReasoningReplayTTL,
 		ReasoningReplayMaxEntries: base.Routing.ReasoningReplayMaxEntries,
 	}
 	commitDelay := base.Audit.CommitDelay.Value()
@@ -496,9 +501,10 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 		Routing: settingsdomain.RoutingConfig{
 			StickyTTL: value.Routing.StickyTTL.Value(), CooldownBase: value.Routing.CooldownBase.Value(),
 			CooldownMax: value.Routing.CooldownMax.Value(), CapacityWait: value.Routing.CapacityWait.Value(), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-			MarkBuildChatDeniedAsReauth: value.Routing.MarkBuildChatDeniedAsReauth,
-			PreferFreeBuild:             value.Routing.PreferFreeBuild,
-			AccountIsolatedConnections:  &accountIsolatedConnections,
+			BuildUsagePenaltyTokenThreshold: value.Routing.BuildUsagePenaltyTokenThreshold,
+			MarkBuildChatDeniedAsReauth:     value.Routing.MarkBuildChatDeniedAsReauth,
+			PreferFreeBuild:                 value.Routing.PreferFreeBuild,
+			AccountIsolatedConnections:      &accountIsolatedConnections,
 			SegmentedSelector: &settingsdomain.SegmentedSelectorConfig{
 				ActiveEnabled: value.Routing.SegmentedSelectorEnabled,
 				MinCandidates: value.Routing.SegmentedMinCandidates, WindowSize: value.Routing.SegmentedWindowSize,
@@ -590,6 +596,9 @@ func mergeEditable(current config.Config, input EditableConfig) (config.Config, 
 	next.Routing.MaxAttempts = input.Routing.MaxAttempts
 	next.Routing.VideoMaxAttempts = input.Routing.VideoMaxAttempts
 	next.Routing.PreferFreeBuild = input.Routing.PreferFreeBuild
+	if input.Routing.BuildUsagePenaltyTokenThresholdProvided {
+		next.Routing.BuildUsagePenaltyTokenThreshold = input.Routing.BuildUsagePenaltyTokenThreshold
+	}
 	if input.Routing.AccountIsolatedConnectionsProvided {
 		next.Routing.AccountIsolatedConnections = input.Routing.AccountIsolatedConnections
 	}
@@ -741,11 +750,13 @@ func toEditable(cfg config.Config) EditableConfig {
 		Routing: RoutingConfig{
 			StickyTTL: cfg.Routing.StickyTTL.String(), CooldownBase: cfg.Routing.CooldownBase.String(),
 			CooldownMax: cfg.Routing.CooldownMax.String(), CapacityWait: cfg.Routing.CapacityWait.String(), MaxAttempts: cfg.Routing.MaxAttempts, VideoMaxAttempts: cfg.Routing.VideoMaxAttempts,
-			MarkBuildChatDeniedAsReauth:         cfg.Routing.MarkBuildChatDeniedAsReauth,
-			MarkBuildChatDeniedAsReauthProvided: true,
-			PreferFreeBuild:                     cfg.Routing.PreferFreeBuild,
-			AccountIsolatedConnections:          cfg.Routing.AccountIsolatedConnections,
-			AccountIsolatedConnectionsProvided:  true,
+			BuildUsagePenaltyTokenThreshold:         cfg.Routing.BuildUsagePenaltyTokenThreshold,
+			BuildUsagePenaltyTokenThresholdProvided: true,
+			MarkBuildChatDeniedAsReauth:             cfg.Routing.MarkBuildChatDeniedAsReauth,
+			MarkBuildChatDeniedAsReauthProvided:     true,
+			PreferFreeBuild:                         cfg.Routing.PreferFreeBuild,
+			AccountIsolatedConnections:              cfg.Routing.AccountIsolatedConnections,
+			AccountIsolatedConnectionsProvided:      true,
 			SegmentedSelector: SegmentedSelectorConfig{
 				Enabled: cfg.Routing.SegmentedSelectorEnabled, MinCandidates: cfg.Routing.SegmentedMinCandidates,
 				WindowSize: cfg.Routing.SegmentedWindowSize,
