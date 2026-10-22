@@ -228,6 +228,8 @@ type Service struct {
 	modelSyncing                map[uint64]struct{}
 	markBuildChatDeniedAsReauth atomic.Bool
 	qualityRetry                atomic.Pointer[QualityRetryRuntime]
+	buildMissingReasoningMu     sync.RWMutex
+	buildMissingReasoningPolicy buildMissingReasoningPolicy
 }
 
 type teamModelRateLimit struct {
@@ -243,6 +245,11 @@ type teamRateLimitObservation struct {
 type buildForbiddenReauthPolicy struct {
 	enabled bool
 	codes   map[string]struct{}
+}
+
+type buildMissingReasoningPolicy struct {
+	enabled bool
+	models  map[string]struct{}
 }
 
 func (s *Service) ConfigureMedia(repository repository.MediaJobRepository, concurrency int) {
@@ -484,6 +491,22 @@ func (s *Service) UpdateVideoMaxAttempts(maxAttempts int) {
 // 默认 false：仅模型级冷却；true 时按旧逻辑将账号标为失效并出池。
 func (s *Service) UpdateMarkBuildChatDeniedAsReauth(enabled bool) {
 	s.markBuildChatDeniedAsReauth.Store(enabled)
+}
+
+// UpdateBuildMissingReasoningPenalty 热更新 Build 无推理输出的调度惩罚。
+// 默认关闭；开启后仅对指定公开模型 ID 生效。命中条件：HTTP 200、outputTokens>20、reasoningTokens=0。
+func (s *Service) UpdateBuildMissingReasoningPenalty(enabled bool, modelIDs []string) {
+	models := make(map[string]struct{}, len(modelIDs))
+	for _, raw := range modelIDs {
+		value := strings.ToLower(strings.TrimSpace(raw))
+		if value == "" {
+			continue
+		}
+		models[value] = struct{}{}
+	}
+	s.buildMissingReasoningMu.Lock()
+	s.buildMissingReasoningPolicy = buildMissingReasoningPolicy{enabled: enabled, models: models}
+	s.buildMissingReasoningMu.Unlock()
 }
 
 func (s *Service) UpdateRequestTimeout(value time.Duration) {
@@ -1170,6 +1193,12 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 				}); err != nil {
 					s.logger.Error("request_usage_write_failed", "event_id", record.EventID, "request_id", input.RequestID, "error", err)
 				}
+				if successful {
+					_ = budget.run("missing_reasoning_penalty", finalizationMetadataBudget, func(stageCtx context.Context) error {
+						s.maybePenalizeBuildMissingReasoning(record, credential, publicModel)
+						return nil
+					})
+				}
 				if usage.ResponseModel != "" {
 					_ = budget.run("observed_model", finalizationMetadataBudget, func(stageCtx context.Context) error {
 						return s.accounts.ObserveResponseModel(stageCtx, accountID, usage.ResponseModel)
@@ -1843,6 +1872,27 @@ func isSSOCredentialRejected(err error, credential accountdomain.Credential) boo
 	return ok && status == http.StatusUnauthorized
 }
 
+func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, credential accountdomain.Credential, publicModel string) {
+	if s == nil || s.selector == nil || record.AccountID == nil {
+		return
+	}
+	s.buildMissingReasoningMu.RLock()
+	policy := s.buildMissingReasoningPolicy
+	s.buildMissingReasoningMu.RUnlock()
+	modelID := strings.ToLower(strings.TrimSpace(publicModel))
+	if modelID == "" {
+		modelID = strings.ToLower(strings.TrimSpace(record.ModelPublicID))
+	}
+	if !missingReasoningPenaltyApplies(credential.Provider, record.StatusCode, record.OutputTokens, record.ReasoningTokens, modelID, policy.enabled, policy.models) {
+		return
+	}
+	s.selector.RecordMissingReasoningPenalty(*record.AccountID, time.Now().UTC())
+	logger := s.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Warn("build_missing_reasoning_penalty", "request_id", record.RequestID, "account_id", credential.ID, "account_name", credential.Name, "model", modelID, "status", record.StatusCode, "output_tokens", record.OutputTokens, "reasoning_tokens", record.ReasoningTokens)
+}
 func (s *Service) markSSOCredentialRejected(ctx context.Context, credential accountdomain.Credential, reason string) {
 	if credential.AuthType != accountdomain.AuthTypeSSO {
 		return

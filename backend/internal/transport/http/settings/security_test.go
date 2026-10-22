@@ -72,6 +72,46 @@ func TestSettingsResponseIncludesBuildUsagePenaltyTokenThreshold(t *testing.T) {
 	}
 }
 
+func TestSettingsResponseIncludesBuildMissingReasoningPenalty(t *testing.T) {
+	enabled := true
+	models := []string{"grok-4.6"}
+	response := newSettingsResponse(settingsapp.Snapshot{Config: settingsapp.EditableConfig{
+		Routing: settingsapp.RoutingConfig{
+			BuildMissingReasoningPenaltyEnabled:  true,
+			BuildMissingReasoningPenaltyModelIDs: models,
+		},
+	}})
+	if response.Config.Routing.BuildMissingReasoningPenaltyEnabled == nil || *response.Config.Routing.BuildMissingReasoningPenaltyEnabled != enabled {
+		t.Fatal("buildMissingReasoningPenaltyEnabled was lost from settings response")
+	}
+	if response.Config.Routing.BuildMissingReasoningPenaltyModelIDs == nil || len(*response.Config.Routing.BuildMissingReasoningPenaltyModelIDs) != 1 || (*response.Config.Routing.BuildMissingReasoningPenaltyModelIDs)[0] != "grok-4.6" {
+		t.Fatalf("buildMissingReasoningPenaltyModelIDs = %#v", response.Config.Routing.BuildMissingReasoningPenaltyModelIDs)
+	}
+}
+
+func TestLegacySettingsRequestMayOmitBuildMissingReasoningPenalty(t *testing.T) {
+	var dto settingsConfigDTO
+	if err := json.Unmarshal([]byte(`{"routing":{"stickyTTL":"1h"}}`), &dto); err != nil {
+		t.Fatal(err)
+	}
+	input := dto.toApplication()
+	if input.Routing.BuildMissingReasoningPenaltyEnabledProvided || input.Routing.BuildMissingReasoningPenaltyModelIDsProvided {
+		t.Fatal("missing missing-reasoning penalty fields were treated as an explicit update")
+	}
+
+	var explicit settingsConfigDTO
+	if err := json.Unmarshal([]byte(`{"routing":{"buildMissingReasoningPenaltyEnabled":false,"buildMissingReasoningPenaltyModelIDs":["grok-4.6"]}}`), &explicit); err != nil {
+		t.Fatal(err)
+	}
+	applied := explicit.toApplication()
+	if !applied.Routing.BuildMissingReasoningPenaltyEnabledProvided || applied.Routing.BuildMissingReasoningPenaltyEnabled {
+		t.Fatalf("explicit false missing-reasoning switch was lost: %#v", applied.Routing)
+	}
+	if !applied.Routing.BuildMissingReasoningPenaltyModelIDsProvided || len(applied.Routing.BuildMissingReasoningPenaltyModelIDs) != 1 || applied.Routing.BuildMissingReasoningPenaltyModelIDs[0] != "grok-4.6" {
+		t.Fatalf("explicit missing-reasoning models were lost: %#v", applied.Routing)
+	}
+}
+
 func TestLegacySettingsRequestMayOmitBuildUsagePenaltyTokenThreshold(t *testing.T) {
 	var dto settingsConfigDTO
 	if err := json.Unmarshal([]byte(`{"routing":{"stickyTTL":"1h"}}`), &dto); err != nil {

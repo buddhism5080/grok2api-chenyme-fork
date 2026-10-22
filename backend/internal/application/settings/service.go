@@ -110,6 +110,10 @@ type RoutingConfig struct {
 	// older management client omits the newly added field.
 	// BuildUsagePenaltyTokenThreshold is the Build Free input+output token latch.
 	// 0 disables the guard. Older clients omit the field; Provided preserves the current value.
+	BuildMissingReasoningPenaltyEnabled          bool
+	BuildMissingReasoningPenaltyEnabledProvided  bool
+	BuildMissingReasoningPenaltyModelIDs         []string
+	BuildMissingReasoningPenaltyModelIDsProvided bool
 	BuildUsagePenaltyTokenThreshold         int64
 	BuildUsagePenaltyTokenThresholdProvided bool
 	AccountIsolatedConnectionsProvided      bool
@@ -400,6 +404,14 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 	if value.Routing.AccountIsolatedConnections != nil {
 		accountIsolatedConnections = *value.Routing.AccountIsolatedConnections
 	}
+	buildMissingReasoningPenaltyEnabled := base.Routing.BuildMissingReasoningPenaltyEnabled
+	if value.Routing.BuildMissingReasoningPenaltyEnabled != nil {
+		buildMissingReasoningPenaltyEnabled = *value.Routing.BuildMissingReasoningPenaltyEnabled
+	}
+	buildMissingReasoningPenaltyModelIDs := append([]string(nil), base.Routing.BuildMissingReasoningPenaltyModelIDs...)
+	if value.Routing.BuildMissingReasoningPenaltyModelIDs != nil {
+		buildMissingReasoningPenaltyModelIDs = append([]string(nil), value.Routing.BuildMissingReasoningPenaltyModelIDs...)
+	}
 	if value.Routing.SegmentedSelector != nil {
 		segmentedEnabled = value.Routing.SegmentedSelector.ActiveEnabled
 		segmentedMinCandidates = value.Routing.SegmentedSelector.MinCandidates
@@ -408,6 +420,8 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 	base.Routing = config.RoutingConfig{
 		StickyTTL: config.Duration(value.Routing.StickyTTL), CooldownBase: config.Duration(value.Routing.CooldownBase),
 		CooldownMax: config.Duration(value.Routing.CooldownMax), CapacityWait: config.Duration(capacityWait), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
+		BuildMissingReasoningPenaltyEnabled:  buildMissingReasoningPenaltyEnabled,
+		BuildMissingReasoningPenaltyModelIDs: normalizeWatchedModelIDs(buildMissingReasoningPenaltyModelIDs),
 		BuildUsagePenaltyTokenThreshold: value.Routing.BuildUsagePenaltyTokenThreshold,
 		MarkBuildChatDeniedAsReauth:     value.Routing.MarkBuildChatDeniedAsReauth,
 		PreferFreeBuild:                 value.Routing.PreferFreeBuild,
@@ -459,6 +473,7 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 func toDomainConfig(value config.Config) settingsdomain.Config {
 	randomDelay := value.Batch.RandomDelay.Value()
 	accountIsolatedConnections := value.Routing.AccountIsolatedConnections
+	buildMissingReasoningPenaltyEnabled := value.Routing.BuildMissingReasoningPenaltyEnabled
 	autoDisableDegradedAccounts := value.QualityGuard.RequestRetry.AutoDisable
 	return settingsdomain.Config{
 		Server: settingsdomain.ServerConfig{MaxConcurrentRequests: value.Server.MaxConcurrentRequests},
@@ -501,6 +516,8 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 		Routing: settingsdomain.RoutingConfig{
 			StickyTTL: value.Routing.StickyTTL.Value(), CooldownBase: value.Routing.CooldownBase.Value(),
 			CooldownMax: value.Routing.CooldownMax.Value(), CapacityWait: value.Routing.CapacityWait.Value(), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
+			BuildMissingReasoningPenaltyEnabled:  &buildMissingReasoningPenaltyEnabled,
+			BuildMissingReasoningPenaltyModelIDs: append([]string(nil), value.Routing.BuildMissingReasoningPenaltyModelIDs...),
 			BuildUsagePenaltyTokenThreshold: value.Routing.BuildUsagePenaltyTokenThreshold,
 			MarkBuildChatDeniedAsReauth:     value.Routing.MarkBuildChatDeniedAsReauth,
 			PreferFreeBuild:                 value.Routing.PreferFreeBuild,
@@ -601,6 +618,12 @@ func mergeEditable(current config.Config, input EditableConfig) (config.Config, 
 	}
 	if input.Routing.AccountIsolatedConnectionsProvided {
 		next.Routing.AccountIsolatedConnections = input.Routing.AccountIsolatedConnections
+	}
+	if input.Routing.BuildMissingReasoningPenaltyEnabledProvided {
+		next.Routing.BuildMissingReasoningPenaltyEnabled = input.Routing.BuildMissingReasoningPenaltyEnabled
+	}
+	if input.Routing.BuildMissingReasoningPenaltyModelIDsProvided {
+		next.Routing.BuildMissingReasoningPenaltyModelIDs = normalizeWatchedModelIDs(input.Routing.BuildMissingReasoningPenaltyModelIDs)
 	}
 	if input.Routing.SegmentedSelectorProvided {
 		next.Routing.SegmentedSelectorEnabled = input.Routing.SegmentedSelector.Enabled
@@ -750,6 +773,10 @@ func toEditable(cfg config.Config) EditableConfig {
 		Routing: RoutingConfig{
 			StickyTTL: cfg.Routing.StickyTTL.String(), CooldownBase: cfg.Routing.CooldownBase.String(),
 			CooldownMax: cfg.Routing.CooldownMax.String(), CapacityWait: cfg.Routing.CapacityWait.String(), MaxAttempts: cfg.Routing.MaxAttempts, VideoMaxAttempts: cfg.Routing.VideoMaxAttempts,
+			BuildMissingReasoningPenaltyEnabled:          cfg.Routing.BuildMissingReasoningPenaltyEnabled,
+			BuildMissingReasoningPenaltyEnabledProvided:  true,
+			BuildMissingReasoningPenaltyModelIDs:         append([]string(nil), cfg.Routing.BuildMissingReasoningPenaltyModelIDs...),
+			BuildMissingReasoningPenaltyModelIDsProvided: true,
 			BuildUsagePenaltyTokenThreshold:         cfg.Routing.BuildUsagePenaltyTokenThreshold,
 			BuildUsagePenaltyTokenThresholdProvided: true,
 			MarkBuildChatDeniedAsReauth:             cfg.Routing.MarkBuildChatDeniedAsReauth,
@@ -803,4 +830,25 @@ func normalizeForbiddenCodes(values []string) []string {
 		result = append(result, code)
 	}
 	return result
+}
+
+func normalizeWatchedModelIDs(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, raw := range values {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }

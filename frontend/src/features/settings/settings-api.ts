@@ -23,6 +23,8 @@ export type SettingsConfigDTO = {
     stickyTTL: string; cooldownBase: string; cooldownMax: string; capacityWait: string; maxAttempts: number; videoMaxAttempts: number; preferFreeBuild: boolean; markBuildChatDeniedAsReauth: boolean;
     accountIsolatedConnections: boolean;
     buildUsagePenaltyTokenThreshold: number;
+    buildMissingReasoningPenaltyEnabled: boolean;
+    buildMissingReasoningPenaltyModelIDs: string[];
     segmentedSelector: { enabled: boolean; minCandidates: number; windowSize: number };
   };
   audit: { bufferSize: number; batchSize: number; flushInterval: string; commitDelayMS: number; retentionDays?: number };
@@ -134,6 +136,8 @@ const settingsConfigValidator = hasShape({
     stickyTTL: isString, cooldownBase: isString, cooldownMax: isString, capacityWait: isString, maxAttempts: isNumber, videoMaxAttempts: isNumber, preferFreeBuild: isBoolean, markBuildChatDeniedAsReauth: isBoolean,
     accountIsolatedConnections: isOptional(isBoolean),
     buildUsagePenaltyTokenThreshold: isOptional(isNumber),
+    buildMissingReasoningPenaltyEnabled: isOptional(isBoolean),
+    buildMissingReasoningPenaltyModelIDs: isOptional(isArrayOf(isString)),
     segmentedSelector: isOptional(hasShape({ enabled: isBoolean, minCandidates: isNumber, windowSize: isNumber })),
   }),
   audit: hasShape({
@@ -190,6 +194,8 @@ function withSettingsDefaults(snapshot: SettingsSnapshotDTO): SettingsSnapshotDT
         markBuildChatDeniedAsReauth: snapshot.config.routing.markBuildChatDeniedAsReauth ?? false,
         accountIsolatedConnections: snapshot.config.routing.accountIsolatedConnections ?? false,
         buildUsagePenaltyTokenThreshold: snapshot.config.routing.buildUsagePenaltyTokenThreshold ?? 0,
+        buildMissingReasoningPenaltyEnabled: snapshot.config.routing.buildMissingReasoningPenaltyEnabled ?? false,
+        buildMissingReasoningPenaltyModelIDs: snapshot.config.routing.buildMissingReasoningPenaltyModelIDs ?? ["grok-4.6"],
         segmentedSelector: {
           enabled: segmentedSelector.enabled ?? true,
           minCandidates: segmentedSelector.minCandidates || 3000,

@@ -500,199 +500,34 @@ export function SettingsPage() {
               </div>
             </SettingsSection>
 
-            <SettingsSection title={t("settings.accounts.cleanupTitle")}>
+=======
+            <SettingsSection title={t("settings.accounts.highTokenSpeedTitle")}>
               <div className="space-y-0">
-                <SettingsField controlId="accounts-auto-clean-reauth-enabled" label={t("settings.accounts.autoCleanReauthEnabled")} description={t("settings.accounts.autoCleanReauthEnabledHelp")}>
-                  <Controller control={form.control} name="accounts.autoCleanReauthEnabled" render={({ field }) => (
                     <div className="flex h-9 items-center">
-                      <Switch
-                        id="accounts-auto-clean-reauth-enabled"
-                        checked={Boolean(field.value)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setAutoCleanConfirm("enabled");
-                            return;
-                          }
-                          field.onChange(false);
-                          form.setValue("accounts.autoCleanIncludeDisabled", false, { shouldDirty: true, shouldTouch: true });
-                        }}
-                      />
+                      <Switch id="accounts-build-high-token-speed-auto-disable" checked={field.value} onCheckedChange={field.onChange} />
                     </div>
                   )} />
                 </SettingsField>
-                <SettingsField controlId="accounts-auto-delete-console-unlinked" label={t("settings.accounts.autoDeleteConsoleUnlinked")} description={t("settings.accounts.autoDeleteConsoleUnlinkedHelp")}>
-                  <Controller control={form.control} name="accounts.autoDeleteConsoleUnlinked" render={({ field }) => (
-                    <div className="flex h-9 items-center">
-                      <Switch id="accounts-auto-delete-console-unlinked" checked={Boolean(field.value)} onCheckedChange={field.onChange} />
-                    </div>
-                  )} />
+
                 </SettingsField>
-                <SettingsField controlId="accounts-auto-clean-reauth-interval" label={t("settings.accounts.autoCleanReauthInterval")} description={t("settings.accounts.autoCleanReauthIntervalHelp")} error={form.formState.errors.accounts?.autoCleanReauthInterval?.message}>
-                  <Controller control={form.control} name="accounts.autoCleanReauthInterval" render={({ field }) => (
-                    <DurationInput id="accounts-auto-clean-reauth-interval" value={field.value} onChange={field.onChange} disabled={!autoCleanEnabled} />
-                  )} />
+
                 </SettingsField>
-                <SettingsField controlId="accounts-auto-clean-reauth-min-age" label={t("settings.accounts.autoCleanReauthMinAge")} description={t("settings.accounts.autoCleanReauthMinAgeHelp")} error={form.formState.errors.accounts?.autoCleanReauthMinAge?.message}>
-                  <Controller control={form.control} name="accounts.autoCleanReauthMinAge" render={({ field }) => (
-                    <DurationInput id="accounts-auto-clean-reauth-min-age" value={field.value} onChange={field.onChange} disabled={!autoCleanEnabled} />
-                  )} />
-                </SettingsField>
-                <SettingsField controlId="accounts-auto-clean-include-disabled" label={t("settings.accounts.autoCleanIncludeDisabled")} description={t("settings.accounts.autoCleanIncludeDisabledHelp")}>
-                  <Controller control={form.control} name="accounts.autoCleanIncludeDisabled" render={({ field }) => (
-                    <div className="flex h-9 items-center">
-                      <Switch
-                        id="accounts-auto-clean-include-disabled"
-                        checked={Boolean(field.value)}
-                        disabled={!autoCleanEnabled}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setAutoCleanConfirm("includeDisabled");
-                            return;
-                          }
-                          field.onChange(false);
-                        }}
-                      />
-                    </div>
-                  )} />
+
                 </SettingsField>
               </div>
-              <AlertDialog open={autoCleanConfirm !== null} onOpenChange={(open) => { if (!open) setAutoCleanConfirm(null); }}>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>
-                      {autoCleanConfirm === "includeDisabled"
-                        ? t("settings.accounts.autoCleanIncludeDisabledTitle")
-                        : t("settings.accounts.autoCleanEnableTitle")}
-                    </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {autoCleanConfirm === "includeDisabled"
-                        ? t("settings.accounts.autoCleanIncludeDisabledDescription")
-                        : t("settings.accounts.autoCleanEnableDescription")}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                    <AlertDialogAction
-                      className="bg-destructive text-white hover:bg-destructive/90"
-                      onClick={() => {
-                        if (autoCleanConfirm === "includeDisabled") {
-                          form.setValue("accounts.autoCleanIncludeDisabled", true, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
-                        } else {
-                          form.setValue("accounts.autoCleanReauthEnabled", true, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
-                        }
-                        setAutoCleanConfirm(null);
-                      }}
-                    >
-                      {t("settings.accounts.autoCleanConfirm")}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
             </SettingsSection>
-          </SettingsPane>
 
-          <SettingsPane value="about">
-            <VersionUpdateSection />
-          </SettingsPane>
-          </div>
-        </Tabs>
-      ) : null}
-    </form>
-  );
-}
-
-function ByteSizeInput({ id, value, onChange }: { id: string; value?: ByteSizeValue; onChange: (value: ByteSizeValue) => void }) {
-  const { t } = useTranslation();
-  const unit = value?.unit ?? "MiB";
-  return (
-    <div className="flex min-w-0">
-      <Input
-        id={id}
-        type="number"
-        min="0.001"
-        step="any"
-        className="min-w-0 rounded-r-none"
-        value={Number.isFinite(value?.value) ? value?.value : ""}
-        onChange={(event) => onChange({ value: event.target.value === "" ? Number.NaN : Number(event.target.value), unit })}
-      />
-      <Select value={unit} onValueChange={(nextUnit) => { if (isByteSizeUnit(nextUnit)) onChange({ value: value?.value ?? 1, unit: nextUnit }); }}>
-        <SelectTrigger className="w-24 shrink-0 rounded-l-none bg-secondary/55" aria-label={t("settings.media.sizeUnit")}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="MiB">MiB</SelectItem>
-          <SelectItem value="GiB">GiB</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-function DurationInput({ id, value, onChange, disabled }: { id: string; value?: DurationValue; onChange: (value: DurationValue) => void; disabled?: boolean }) {
-  const { t } = useTranslation();
-  const unit = value?.unit ?? "s";
-  return (
-    <div className="flex min-w-0">
-      <Input
-        id={id}
-        type="number"
-        min="0.001"
-        step="any"
-        disabled={disabled}
-        className="min-w-0 rounded-r-none"
-        value={Number.isFinite(value?.value) ? value?.value : ""}
-        onChange={(event) => onChange({ value: event.target.value === "" ? Number.NaN : Number(event.target.value), unit })}
-      />
-      <Select value={unit} disabled={disabled} onValueChange={(nextUnit) => { if (isDurationUnit(nextUnit)) onChange({ value: value?.value ?? 1, unit: nextUnit }); }}>
-        <SelectTrigger className="w-24 shrink-0 rounded-l-none bg-secondary/55" aria-label={t("settings.durationUnit")}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="s">{t("settings.units.seconds")}</SelectItem>
-          <SelectItem value="m">{t("settings.units.minutes")}</SelectItem>
-          <SelectItem value="h">{t("settings.units.hours")}</SelectItem>
-          <SelectItem value="d">{t("settings.units.days")}</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-function SettingsPane({ value, children }: { value: string; children: ReactNode }) {
-  return (
-    <TabsContent value={value} forceMount className="m-0 space-y-8 data-[state=inactive]:hidden">
-      {children}
-    </TabsContent>
-  );
-}
-
-function SettingsSection({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="space-y-3">
-      <div className="flex min-h-8 items-center justify-between gap-3 px-1">
-        <h2 className="text-sm font-medium tracking-tight">{title}</h2>
-        {action}
-      </div>
-      <div className="min-w-0 w-full">{children}</div>
-    </section>
-  );
-}
-
-function SettingsField({ controlId, label, badge, description, error, className, children }: { controlId: string; label: string; badge?: string; description?: string; error?: string; className?: string; children: ReactNode }) {
-  const { t } = useTranslation();
-  return (
-    <div className={cn("min-w-0 py-4", className)}>
-      <div className="grid min-w-0 gap-2.5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] sm:items-center sm:gap-8">
-        <div className="min-w-0">
-          <div className="flex min-h-5 items-center gap-2">
-            <Label htmlFor={controlId} className="text-xs font-medium">{label}</Label>
-            {badge ? <Badge variant="secondary" className="shrink-0 text-[10px]">{badge}</Badge> : null}
-          </div>
-          {description ? <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">{description}</p> : null}
-          {error ? <p className="mt-1 text-xs text-destructive">{t("settings.invalidValue")}</p> : null}
-        </div>
-        <div className="min-w-0">{children}</div>
-      </div>
-    </div>
-  );
-}
+            <SettingsSection title={t("settings.accounts.missingReasoningTitle")}>
+              <div className="space-y-0">
+                <SettingsField controlId="accounts-build-missing-reasoning-penalty-enabled" label={t("settings.accounts.buildMissingReasoningPenaltyEnabled")} description={t("settings.accounts.buildMissingReasoningPenaltyEnabledHelp")}>
+                  <Controller control={form.control} name="routing.buildMissingReasoningPenaltyEnabled" render={({ field }) => (
+                    <div className="flex h-9 items-center">
+                      <Switch id="accounts-build-missing-reasoning-penalty-enabled" checked={field.value} onCheckedChange={field.onChange} />
+                    </div>
+                  )} />
+                </SettingsField>
+                <SettingsField controlId="accounts-build-missing-reasoning-penalty-model-ids" label={t("settings.accounts.buildMissingReasoningPenaltyModelIDs")} description={t("settings.accounts.buildMissingReasoningPenaltyModelIDsHelp")} error={form.formState.errors.routing?.buildMissingReasoningPenaltyModelIDs?.message}>
+                  <Textarea id="accounts-build-missing-reasoning-penalty-model-ids" rows={3} disabled={!form.watch("routing.buildMissingReasoningPenaltyEnabled")} placeholder={t("settings.accounts.buildMissingReasoningPenaltyModelIDsPlaceholder")} {...form.register("routing.buildMissingReasoningPenaltyModelIDs")} />
+                </SettingsField>
+              </div>
+            </SettingsSection> 
