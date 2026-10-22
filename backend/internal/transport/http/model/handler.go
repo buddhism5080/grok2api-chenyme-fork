@@ -41,18 +41,20 @@ func (h *Handler) Register(router *gin.RouterGroup) {
 }
 
 type updateRequest struct {
-	PublicID   *string   `json:"publicId"`
-	Enabled    *bool     `json:"enabled"`
-	AccountIDs *[]string `json:"accountIds"`
+	PublicID        *string   `json:"publicId"`
+	Enabled         *bool     `json:"enabled"`
+	AccountIDs      *[]string `json:"accountIds"`
+	BindAllAccounts *bool     `json:"bindAllAccounts"`
 }
 
 type createRequest struct {
-	PublicID      string   `json:"publicId" binding:"required"`
-	Provider      string   `json:"provider" binding:"required"`
-	UpstreamModel string   `json:"upstreamModel" binding:"required"`
-	Capability    string   `json:"capability" binding:"required"`
-	Enabled       bool     `json:"enabled"`
-	AccountIDs    []string `json:"accountIds"`
+	PublicID        string   `json:"publicId" binding:"required"`
+	Provider        string   `json:"provider" binding:"required"`
+	UpstreamModel   string   `json:"upstreamModel" binding:"required"`
+	Capability      string   `json:"capability" binding:"required"`
+	Enabled         bool     `json:"enabled"`
+	AccountIDs      []string `json:"accountIds"`
+	BindAllAccounts bool     `json:"bindAllAccounts"`
 }
 
 type batchUpdateRequest struct {
@@ -74,6 +76,7 @@ type modelResponse struct {
 	Origin            string     `json:"origin"`
 	AccountIDs        []string   `json:"accountIds"`
 	BindingMode       bool       `json:"bindingMode"`
+	BindAllAccounts   bool       `json:"bindAllAccounts"`
 	SupportedAccounts int        `json:"supportedAccounts"`
 	SyncedAccounts    int        `json:"syncedAccounts"`
 	TotalAccounts     int        `json:"totalAccounts"`
@@ -188,9 +191,14 @@ func (h *Handler) create(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "invalidId", err.Error())
 		return
 	}
+	if request.BindAllAccounts && len(accountIDs) > 0 {
+		response.Error(c, http.StatusBadRequest, "bindAllAccountsConflict", "绑定所有账号与绑定指定账号不能同时开启")
+		return
+	}
 	value, err := h.service.Create(c.Request.Context(), modelapp.CreateInput{
 		PublicID: request.PublicID, Provider: account.Provider(request.Provider), UpstreamModel: request.UpstreamModel,
 		Capability: modeldomain.Capability(request.Capability), Enabled: request.Enabled, AccountIDs: accountIDs,
+		BindAllAccounts: request.BindAllAccounts,
 	})
 	if err != nil {
 		h.writeServiceError(c, "modelCreateFailed", err)
@@ -352,7 +360,11 @@ func (h *Handler) update(c *gin.Context) {
 		}
 		accountIDs = &parsed
 	}
-	value, err := h.service.Update(c.Request.Context(), id, modelapp.UpdateInput{PublicID: request.PublicID, Enabled: request.Enabled, AccountIDs: accountIDs})
+	if request.BindAllAccounts != nil && *request.BindAllAccounts && accountIDs != nil && len(*accountIDs) > 0 {
+		response.Error(c, http.StatusBadRequest, "bindAllAccountsConflict", "绑定所有账号与绑定指定账号不能同时开启")
+		return
+	}
+	value, err := h.service.Update(c.Request.Context(), id, modelapp.UpdateInput{PublicID: request.PublicID, Enabled: request.Enabled, AccountIDs: accountIDs, BindAllAccounts: request.BindAllAccounts})
 	if err != nil {
 		h.writeServiceError(c, "modelUpdateFailed", err)
 		return
@@ -388,18 +400,21 @@ func (h *Handler) writeServiceError(c *gin.Context, code string, err error) {
 }
 
 func newModelResponse(value modeldomain.Route) modelResponse {
-	manualBinding := len(value.BoundAccountIDs) > 0
+	bindAll := value.BindAllAccounts
+	manualBinding := len(value.BoundAccountIDs) > 0 && !bindAll
 	// Console uses a provider-wide static catalog, so catalog support is known
 	// even when an account capability snapshot predates a newly shipped model.
-	capabilityKnown := manualBinding || value.SyncedAccounts > 0 || (value.Provider == account.ProviderConsole && (value.Origin == modeldomain.OriginCatalog || value.SupportedAccounts > 0))
-	available := value.TotalAccounts > 0 && (value.SupportedAccounts > 0 || (!manualBinding && value.SyncedAccounts < value.TotalAccounts))
+	capabilityKnown := manualBinding || bindAll || value.SyncedAccounts > 0 || (value.Provider == account.ProviderConsole && (value.Origin == modeldomain.OriginCatalog || value.SupportedAccounts > 0))
+	available := value.TotalAccounts > 0 && (value.SupportedAccounts > 0 || (!manualBinding && !bindAll && value.SyncedAccounts < value.TotalAccounts))
 	accountIDs := make([]string, 0, len(value.BoundAccountIDs))
-	for _, id := range value.BoundAccountIDs {
-		accountIDs = append(accountIDs, strconv.FormatUint(id, 10))
+	if !bindAll {
+		for _, id := range value.BoundAccountIDs {
+			accountIDs = append(accountIDs, strconv.FormatUint(id, 10))
+		}
 	}
 	return modelResponse{
 		ID: value.ID, PublicID: modeldomain.ExternalPublicID(value.Provider, value.PublicID), Provider: string(value.Provider), UpstreamModel: modeldomain.DisplayUpstreamModel(value.Provider, value.UpstreamModel), Capability: string(value.Capability),
-		Enabled: value.Enabled, Origin: string(value.Origin), AccountIDs: accountIDs, BindingMode: manualBinding, SupportedAccounts: value.SupportedAccounts,
+		Enabled: value.Enabled, Origin: string(value.Origin), AccountIDs: accountIDs, BindingMode: manualBinding, BindAllAccounts: bindAll, SupportedAccounts: value.SupportedAccounts,
 		SyncedAccounts: value.SyncedAccounts, TotalAccounts: value.TotalAccounts, CapabilityKnown: capabilityKnown,
 		Available: available, LastSyncedAt: value.LastSyncedAt,
 	}

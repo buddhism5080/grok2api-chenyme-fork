@@ -2015,7 +2015,7 @@ func assembleRoutingCandidates(provider account.Provider, quotaMode string, base
 		byAccount[value.AccountID] = value
 	}
 	sharedSuperBuildModel := false
-	if provider == account.ProviderBuild && !overlay.HasBindings {
+	if provider == account.ProviderBuild && !overlay.HasBindings && !overlay.BindAll {
 		for _, base := range bases {
 			value, exists := byAccount[base.Credential.ID]
 			if exists && value.SupportsModel && account.IsBuildSuper(base.Credential, base.Billing) {
@@ -2029,13 +2029,11 @@ func assembleRoutingCandidates(provider account.Provider, quotaMode string, base
 		(provider == account.ProviderWeb && account.IsWebImagineQuotaMode(quotaMode))
 	for _, base := range bases {
 		overlayValue := byAccount[base.Credential.ID]
-		if overlay.HasBindings && !overlayValue.Bound {
+		if !overlay.BindAll && overlay.HasBindings && !overlayValue.Bound {
 			continue
 		}
 		known, supports := overlayValue.ModelCapabilityKnown, overlayValue.SupportsModel
-		if staticProviderModel {
-			known, supports = true, true
-		} else if overlay.HasBindings {
+		if staticProviderModel || overlay.BindAll || overlay.HasBindings {
 			known, supports = true, true
 		} else if sharedSuperBuildModel && account.IsBuildSuper(base.Credential, base.Billing) {
 			known, supports = true, true

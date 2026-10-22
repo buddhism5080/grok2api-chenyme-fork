@@ -360,12 +360,18 @@ func (r *AccountRepository) ListRoutingCandidates(ctx context.Context, provider 
 		return nil, err
 	}
 	bound := make(map[uint64]bool)
+	bindAll := false
 	if strings.TrimSpace(upstreamModel) != "" {
+		var loadErr error
+		bindAll, loadErr = r.routeBindsAllAccounts(ctx, provider, modelRouteID, upstreamModel)
+		if loadErr != nil {
+			return nil, loadErr
+		}
 		boundIDs, loadErr := r.listRoutingBoundAccountIDs(ctx, provider, modelRouteID, upstreamModel)
 		if loadErr != nil {
 			return nil, loadErr
 		}
-		if len(boundIDs) > 0 {
+		if !bindAll && len(boundIDs) > 0 {
 			for _, id := range boundIDs {
 				bound[id] = true
 			}
@@ -436,7 +442,7 @@ func (r *AccountRepository) ListRoutingCandidates(ctx context.Context, provider 
 		}
 	}
 	sharedSuperBuildModel := false
-	if provider == account.ProviderBuild && len(bound) == 0 {
+	if provider == account.ProviderBuild && !bindAll && len(bound) == 0 {
 		for _, value := range values {
 			if !supported[value.ID] {
 				continue
@@ -463,7 +469,7 @@ func (r *AccountRepository) ListRoutingCandidates(ctx context.Context, provider 
 			// quota mode proves the adapter knows the model; unknown/manual models
 			// keep snapshot-based gating.
 			capabilityKnown, supportsModel = true, true
-		} else if len(bound) > 0 {
+		} else if bindAll || len(bound) > 0 {
 			capabilityKnown, supportsModel = true, true
 		} else if sharedSuperBuildModel {
 			var billing *account.Billing
@@ -779,6 +785,10 @@ func (r *AccountRepository) ListRoutingAccountOverlays(ctx context.Context, prov
 	if upstreamModel == "" {
 		return account.RoutingOverlaySnapshot{}, nil
 	}
+	bindAll, err := r.routeBindsAllAccounts(ctx, provider, modelRouteID, upstreamModel)
+	if err != nil {
+		return account.RoutingOverlaySnapshot{}, err
+	}
 	boundIDs, err := r.listRoutingBoundAccountIDs(ctx, provider, modelRouteID, upstreamModel)
 	if err != nil {
 		return account.RoutingOverlaySnapshot{}, err
@@ -832,7 +842,7 @@ func (r *AccountRepository) ListRoutingAccountOverlays(ctx context.Context, prov
 		overlay.ModelQuotaBlock = &account.ModelQuotaBlock{AccountID: row.AccountID, UpstreamModel: row.UpstreamModel, Reason: row.Reason, CooldownUntil: row.CooldownUntil.UTC(), UpdatedAt: row.UpdatedAt.UTC()}
 		values[row.AccountID] = overlay
 	}
-	result := account.RoutingOverlaySnapshot{HasBindings: len(boundIDs) > 0, Values: make([]account.RoutingAccountOverlay, 0, len(values))}
+	result := account.RoutingOverlaySnapshot{BindAll: bindAll, HasBindings: bindAll || len(boundIDs) > 0, Values: make([]account.RoutingAccountOverlay, 0, len(values))}
 	for _, value := range values {
 		result.Values = append(result.Values, value)
 	}
@@ -854,6 +864,25 @@ func (r *AccountRepository) listRoutingBoundAccountIDs(ctx context.Context, prov
 		return nil, err
 	}
 	return accountIDs, nil
+}
+
+func (r *AccountRepository) routeBindsAllAccounts(ctx context.Context, provider account.Provider, modelRouteID uint64, upstreamModel string) (bool, error) {
+	query := r.db.db.WithContext(ctx).
+		Table("model_routes AS route").
+		Where("route.provider = ? AND route.upstream_model = ?", provider, upstreamModel)
+	if modelRouteID > 0 {
+		query = query.Where("route.id = ?", modelRouteID)
+	}
+	var flags []bool
+	if err := query.Pluck("route.bind_all_accounts", &flags).Error; err != nil {
+		return false, err
+	}
+	for _, flag := range flags {
+		if flag {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *AccountRepository) ListEnabled(ctx context.Context, provider account.Provider) ([]account.Credential, error) {

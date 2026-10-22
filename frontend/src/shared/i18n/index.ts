@@ -2109,11 +2109,14 @@ Object.assign(resources["zh-CN"].translation.models as unknown as Record<string,
   capabilitySTT: "STT",
   capabilityRealtime: "Realtime",
   automaticAccounts: "自动账号池",
+  allAccounts: "全部账号",
   mixedAccounts: "混合账号池",
   partiallyEnabled: "部分启用",
   editCapability: "编辑 {{capability}}",
   deleteGroupDescription: "这将删除 {{name}} 的全部 {{count}} 项接口能力及其客户端密钥权限。后续目录同步可能重新创建仍受上游支持的能力。",
-  bindAccountsDescription: "开启后仅通过指定账号路由；关闭后由对应 Provider 的可用账号池自动调度。Console 内置模型无需逐账号硬绑定。",
+  bindAccountsDescription: "开启后仅通过指定账号路由。关闭后，若未开启绑定所有账号，则按模型同步结果自动调度。与绑定所有账号互斥。",
+  bindAllAccounts: "绑定所有账号",
+  bindAllAccountsDescription: "开启后，该来源下的账号都可调度，不看模型能力同步。停用或需要重新登录的仍不会被选中。与绑定指定账号互斥。",
 });
 Object.assign(resources.en.translation.models as unknown as Record<string, string>, {
   capability: "Endpoint capability",
@@ -2128,11 +2131,14 @@ Object.assign(resources.en.translation.models as unknown as Record<string, strin
   capabilitySTT: "STT",
   capabilityRealtime: "Realtime",
   automaticAccounts: "Automatic pool",
+  allAccounts: "All accounts",
   mixedAccounts: "Mixed account pools",
   partiallyEnabled: "Partially enabled",
   editCapability: "Edit {{capability}}",
   deleteGroupDescription: "This removes all {{count}} endpoint capabilities for {{name}} and their client-key permissions. A later catalog sync may recreate capabilities that the upstream still supports.",
-  bindAccountsDescription: "When enabled, route only through the selected accounts. Otherwise, schedule from the provider's eligible account pool automatically. Built-in Console models do not require per-account bindings.",
+  bindAccountsDescription: "When enabled, route only through the selected accounts. When off, and bind-all is also off, schedule from accounts whose capability sync includes this model. Mutually exclusive with binding every account.",
+  bindAllAccounts: "Bind every account",
+  bindAllAccountsDescription: "When enabled, every account from this provider can be scheduled, ignoring capability sync. Disabled or reauth-required accounts are still skipped. Mutually exclusive with binding specific accounts.",
 });
 
 // Kept separate from the legacy one-line settings resources so proxy

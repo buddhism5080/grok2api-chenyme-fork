@@ -485,6 +485,9 @@ type RoutingAccountOverlay struct {
 }
 
 type RoutingOverlaySnapshot struct {
+	// BindAll marks every provider account eligible, without enumerating IDs.
+	// HasBindings is also set so capability sharing does not narrow the pool.
+	BindAll     bool
 	HasBindings bool
 	Values      []RoutingAccountOverlay
 }

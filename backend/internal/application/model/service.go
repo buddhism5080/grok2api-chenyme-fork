@@ -32,18 +32,20 @@ var (
 )
 
 type UpdateInput struct {
-	PublicID   *string
-	Enabled    *bool
-	AccountIDs *[]uint64
+	PublicID        *string
+	Enabled         *bool
+	AccountIDs      *[]uint64
+	BindAllAccounts *bool
 }
 
 type CreateInput struct {
-	PublicID      string
-	Provider      account.Provider
-	UpstreamModel string
-	Capability    modeldomain.Capability
-	Enabled       bool
-	AccountIDs    []uint64
+	PublicID        string
+	Provider        account.Provider
+	UpstreamModel   string
+	Capability      modeldomain.Capability
+	Enabled         bool
+	AccountIDs      []uint64
+	BindAllAccounts bool
 }
 
 type AccountOption struct {
@@ -275,9 +277,15 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (modeldomain.Ro
 	if err != nil {
 		return modeldomain.Route{}, err
 	}
+	if input.BindAllAccounts {
+		if len(accountIDs) > 0 {
+			return modeldomain.Route{}, invalidInput("绑定所有账号与绑定指定账号不能同时开启")
+		}
+	}
 	value := modeldomain.Route{
 		PublicID: publicID, Provider: input.Provider, UpstreamModel: upstreamModel,
 		Capability: input.Capability, Origin: modeldomain.OriginManual, Enabled: input.Enabled,
+		BindAllAccounts: input.BindAllAccounts,
 	}
 	created, err := s.models.Create(ctx, value, accountIDs)
 	return created, mapRepositoryError(err)
@@ -299,12 +307,27 @@ func (s *Service) Update(ctx context.Context, id uint64, input UpdateInput) (mod
 		value.Enabled = *input.Enabled
 	}
 	var accountIDs *[]uint64
-	if input.AccountIDs != nil {
-		validated, validateErr := s.validateBoundAccounts(ctx, value.Provider, *input.AccountIDs)
-		if validateErr != nil {
-			return modeldomain.Route{}, validateErr
+	if input.BindAllAccounts != nil && *input.BindAllAccounts {
+		if input.AccountIDs != nil && len(*input.AccountIDs) > 0 {
+			return modeldomain.Route{}, invalidInput("绑定所有账号与绑定指定账号不能同时开启")
 		}
-		accountIDs = &validated
+		value.BindAllAccounts = true
+		empty := []uint64{}
+		accountIDs = &empty
+	} else {
+		if input.BindAllAccounts != nil {
+			value.BindAllAccounts = false
+		}
+		if input.AccountIDs != nil {
+			if len(*input.AccountIDs) > 0 {
+				value.BindAllAccounts = false
+			}
+			validated, validateErr := s.validateBoundAccounts(ctx, value.Provider, *input.AccountIDs)
+			if validateErr != nil {
+				return modeldomain.Route{}, validateErr
+			}
+			accountIDs = &validated
+		}
 	}
 	updated, err := s.models.Update(ctx, value, accountIDs)
 	return updated, mapRepositoryError(err)

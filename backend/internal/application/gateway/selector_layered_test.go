@@ -1008,6 +1008,118 @@ func TestAssembleRoutingCandidatesAllowsRecognizedWebImagineModelWithStaleSnapsh
 	}
 }
 
+func TestAssembleRoutingCandidatesBindAllIgnoresCapabilitySnapshot(t *testing.T) {
+	bases := []account.RoutingAccountBase{
+		{Credential: account.Credential{ID: 1, Provider: account.ProviderBuild, Enabled: true, AuthStatus: account.AuthStatusActive}},
+		{Credential: account.Credential{ID: 2, Provider: account.ProviderBuild, Enabled: true, AuthStatus: account.AuthStatusActive}},
+	}
+	overlay := account.RoutingOverlaySnapshot{
+		BindAll: true, HasBindings: true,
+		Values: []account.RoutingAccountOverlay{{AccountID: 2, ModelCapabilityKnown: true, SupportsModel: false}},
+	}
+	got := assembleRoutingCandidates(account.ProviderBuild, "", bases, overlay)
+	if len(got) != 2 || !got[0].SupportsModel || !got[0].ModelCapabilityKnown || !got[1].SupportsModel || !got[1].ModelCapabilityKnown {
+		t.Fatalf("bind-all candidates = %#v", got)
+	}
+}
+
+func TestBindAllAccountsSchedulesEveryEnabledProviderAccount(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "bind-all.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accounts := relational.NewAccountRepository(database)
+	models := relational.NewModelRepository(database)
+	create := func(name string, enabled bool) account.Credential {
+		t.Helper()
+		created, _, err := accounts.UpsertByIdentity(ctx, account.Credential{
+			Provider: account.ProviderBuild, Name: name, SourceKey: name, EncryptedAccessToken: "encrypted",
+			Enabled: enabled, AuthStatus: account.AuthStatusActive,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return created
+	}
+	first := create("first", true)
+	second := create("second", true)
+	disabled := create("disabled", true)
+	disabled.Enabled = false
+	if _, err := accounts.Update(ctx, disabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := models.UpsertDiscovered(ctx, account.ProviderBuild, []string{"grok-4.6"}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := models.ListEnabled(ctx)
+	if err != nil || len(before) != 0 {
+		t.Fatalf("route without capability or binding must stay unavailable: %#v, err=%v", before, err)
+	}
+	listed, _, err := models.List(ctx, repository.ModelListQuery{Page: repository.PageQuery{Limit: 20}})
+	if err != nil || len(listed) != 1 || listed[0].UpstreamModel != "grok-4.6" || listed[0].SupportedAccounts != 0 || listed[0].BindAllAccounts {
+		t.Fatalf("automatic route = %#v, err=%v", listed, err)
+	}
+	route := listed[0]
+	route.BindAllAccounts = true
+	empty := []uint64{}
+	updated, err := models.Update(ctx, route, &empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.BindAllAccounts || len(updated.BoundAccountIDs) != 0 || updated.SupportedAccounts != 2 || updated.TotalAccounts != 3 {
+		t.Fatalf("bind-all availability = %#v", updated)
+	}
+	enabled, err := models.ListEnabled(ctx)
+	if err != nil || len(enabled) != 1 || enabled[0].ID != updated.ID {
+		t.Fatalf("bind-all enabled routes = %#v, err=%v", enabled, err)
+	}
+	candidates, err := accounts.ListRoutingCandidates(ctx, account.ProviderBuild, updated.ID, "grok-4.6", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("bind-all candidates = %#v", candidates)
+	}
+	for _, candidate := range candidates {
+		if !candidate.SupportsModel || !candidate.ModelCapabilityKnown || candidate.Credential.ID == 0 {
+			t.Fatalf("candidate = %#v", candidate)
+		}
+	}
+	overlay, err := accounts.ListRoutingAccountOverlays(ctx, account.ProviderBuild, updated.ID, "grok-4.6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !overlay.BindAll || !overlay.HasBindings {
+		t.Fatalf("overlay = %#v", overlay)
+	}
+	bases, err := accounts.ListRoutingAccountBases(ctx, account.ProviderBuild, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layered := assembleRoutingCandidates(account.ProviderBuild, "", bases, overlay)
+	if len(layered) != len(candidates) {
+		t.Fatalf("layered = %#v, combined = %#v", layered, candidates)
+	}
+	specificIDs := []uint64{first.ID}
+	updated.BindAllAccounts = false
+	specific, err := models.Update(ctx, updated, &specificIDs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if specific.BindAllAccounts || specific.SupportedAccounts != 1 || specific.TotalAccounts != 1 || len(specific.BoundAccountIDs) != 1 || specific.BoundAccountIDs[0] != first.ID {
+		t.Fatalf("specific binding = %#v, second=%d", specific, second.ID)
+	}
+	specificCandidates, err := accounts.ListRoutingCandidates(ctx, account.ProviderBuild, specific.ID, "grok-4.6", "")
+	if err != nil || len(specificCandidates) != 1 || specificCandidates[0].Credential.ID != first.ID || !specificCandidates[0].SupportsModel {
+		t.Fatalf("specific candidates = %#v, err=%v", specificCandidates, err)
+	}
+}
+
 func newLayeredRepositoryFixture() *layeredAccountRepository {
 	return &layeredAccountRepository{
 		bases: []account.RoutingAccountBase{{Credential: account.Credential{ID: 1, Provider: account.ProviderBuild, Enabled: true, AuthStatus: account.AuthStatusActive}}},
