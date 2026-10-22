@@ -1198,16 +1198,18 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 						}
 					}
 				}
+				if successful {
+					_ = budget.run("missing_reasoning_penalty", finalizationMetadataBudget, func(stageCtx context.Context) error {
+						if s.maybePenalizeBuildMissingReasoning(record, credential, publicModel, input.Body) {
+							record.MissingReasoningPenalty = true
+						}
+						return nil
+					})
+				}
 				if err := budget.run("audit", finalizationAuditBudget, func(stageCtx context.Context) error {
 					return s.audits.Create(stageCtx, record)
 				}); err != nil {
 					s.logger.Error("request_usage_write_failed", "event_id", record.EventID, "request_id", input.RequestID, "error", err)
-				}
-				if successful {
-					_ = budget.run("missing_reasoning_penalty", finalizationMetadataBudget, func(stageCtx context.Context) error {
-						s.maybePenalizeBuildMissingReasoning(record, credential, publicModel, input.Body)
-						return nil
-					})
 				}
 				if usage.ResponseModel != "" {
 					_ = budget.run("observed_model", finalizationMetadataBudget, func(stageCtx context.Context) error {
@@ -1882,9 +1884,9 @@ func isSSOCredentialRejected(err error, credential accountdomain.Credential) boo
 	return ok && status == http.StatusUnauthorized
 }
 
-func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, credential accountdomain.Credential, publicModel string, body []byte) {
+func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, credential accountdomain.Credential, publicModel string, body []byte) bool {
 	if s == nil || s.selector == nil || record.AccountID == nil {
-		return
+		return false
 	}
 	s.buildMissingReasoningMu.RLock()
 	policy := s.buildMissingReasoningPolicy
@@ -1894,10 +1896,10 @@ func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, creden
 		modelID = strings.ToLower(strings.TrimSpace(record.ModelPublicID))
 	}
 	if !missingReasoningPenaltyApplies(credential.Provider, record.StatusCode, record.OutputTokens, record.ReasoningTokens, modelID, policy.enabled, policy.models) {
-		return
+		return false
 	}
 	if missingReasoningUserTurnGateBlocks(modelID, policy.userTurnModels, body) {
-		return
+		return false
 	}
 	s.selector.RecordMissingReasoningPenalty(*record.AccountID, time.Now().UTC())
 	logger := s.logger
@@ -1905,6 +1907,7 @@ func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, creden
 		logger = slog.Default()
 	}
 	logger.Warn("build_missing_reasoning_penalty", "request_id", record.RequestID, "account_id", credential.ID, "account_name", credential.Name, "model", modelID, "status", record.StatusCode, "output_tokens", record.OutputTokens, "reasoning_tokens", record.ReasoningTokens)
+	return true
 }
 func (s *Service) markSSOCredentialRejected(ctx context.Context, credential accountdomain.Credential, reason string) {
 	if credential.AuthType != accountdomain.AuthTypeSSO {

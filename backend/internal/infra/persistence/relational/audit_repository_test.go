@@ -61,7 +61,7 @@ func TestAuditRepositoryBatchAndCursor(t *testing.T) {
 		{RequestID: "cursor-old", ClientKeyID: 1, ModelRouteID: 1, StatusCode: 200, CreatedAt: now.Add(-48 * time.Hour)},
 		{RequestID: "cursor-1", ClientKeyID: 1, ModelRouteID: 1, StatusCode: 200, CreatedAt: now.Add(-3 * time.Minute)},
 		{RequestID: "cursor-2", ClientKeyID: 1, ModelRouteID: 1, StatusCode: 200, CreatedAt: now.Add(-2 * time.Minute)},
-		{RequestID: "cursor-3", ClientKeyID: 1, ClientKeyName: "production", ClientIP: "203.0.113.42", ModelRouteID: 1, ModelPublicID: "grok-test", ModelUpstreamModel: "grok-test-upstream", ReasoningEffort: "xhigh", AccountName: "primary", EgressNodeID: uint64Pointer(42), EgressNodeName: "proxy-shanghai", EgressScope: "grok_web", EgressMode: audit.EgressModeProxy, StatusCode: 200, CreatedAt: now.Add(-time.Minute)},
+		{RequestID: "cursor-3", ClientKeyID: 1, ClientKeyName: "production", ClientIP: "203.0.113.42", ModelRouteID: 1, ModelPublicID: "grok-test", ModelUpstreamModel: "grok-test-upstream", ReasoningEffort: "xhigh", AccountName: "primary", EgressNodeID: uint64Pointer(42), EgressNodeName: "proxy-shanghai", EgressScope: "grok_web", EgressMode: audit.EgressModeProxy, StatusCode: 200, MissingReasoningPenalty: true, CreatedAt: now.Add(-time.Minute)},
 	}
 	if err := repository.CreateBatch(ctx, values); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestAuditRepositoryBatchAndCursor(t *testing.T) {
 	if len(first) != 2 || !hasMore || first[0].ID <= first[1].ID {
 		t.Fatalf("first page = %#v, hasMore = %v", first, hasMore)
 	}
-	if first[0].ClientKeyName != "production" || first[0].ClientIP != "203.0.113.42" || first[0].ModelPublicID != "grok-test" || first[0].ModelUpstreamModel != "grok-test-upstream" || first[0].ReasoningEffort != "xhigh" || first[0].AccountName != "primary" || first[0].EgressNodeID == nil || *first[0].EgressNodeID != 42 || first[0].EgressNodeName != "proxy-shanghai" || first[0].EgressMode != audit.EgressModeProxy {
+	if first[0].ClientKeyName != "production" || first[0].ClientIP != "203.0.113.42" || first[0].ModelPublicID != "grok-test" || first[0].ModelUpstreamModel != "grok-test-upstream" || first[0].ReasoningEffort != "xhigh" || first[0].AccountName != "primary" || first[0].EgressNodeID == nil || *first[0].EgressNodeID != 42 || first[0].EgressNodeName != "proxy-shanghai" || first[0].EgressMode != audit.EgressModeProxy || !first[0].MissingReasoningPenalty {
 		t.Fatalf("audit snapshots = %#v", first[0])
 	}
 	matched, _, err := repository.ListCursor(ctx, repositorypkg.AuditCursorQuery{Limit: 10, Search: "proxy-shanghai", Sort: sort})
@@ -84,6 +84,10 @@ func TestAuditRepositoryBatchAndCursor(t *testing.T) {
 	matched, _, err = repository.ListCursor(ctx, repositorypkg.AuditCursorQuery{Limit: 10, Search: "203.0.113.42", Sort: sort})
 	if err != nil || len(matched) != 1 || matched[0].RequestID != "cursor-3" {
 		t.Fatalf("client IP search = %#v, err = %v", matched, err)
+	}
+	penalized, _, err := repository.ListCursor(ctx, repositorypkg.AuditCursorQuery{Limit: 10, Filter: repositorypkg.AuditListFilter{Status: "missingReasoning"}, Sort: sort})
+	if err != nil || len(penalized) != 1 || penalized[0].RequestID != "cursor-3" || !penalized[0].MissingReasoningPenalty {
+		t.Fatalf("missingReasoning filter = %#v, err = %v", penalized, err)
 	}
 	second, _, err := repository.ListCursor(ctx, repositorypkg.AuditCursorQuery{Cursor: &repositorypkg.SortCursor{ID: first[len(first)-1].ID, Value: first[len(first)-1].CreatedAt}, Limit: 2, Sort: sort})
 	if err != nil {
@@ -542,6 +546,13 @@ func TestAuditRepositoryStreamFailureKeepsHTTPStatusAndFiltersAsOther(t *testing
 	}
 	if len(items) != 1 || items[0].RequestID != "healthy" {
 		t.Fatalf("success filter items = %#v", items)
+	}
+	items, _, err = repository.ListCursor(ctx, repositorypkg.AuditCursorQuery{Limit: 50, Filter: repositorypkg.AuditListFilter{Status: "missingReasoning"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("missingReasoning filter items = %#v", items)
 	}
 }
 

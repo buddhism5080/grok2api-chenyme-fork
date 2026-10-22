@@ -111,6 +111,7 @@ type Record struct {
 	FirstTokenMS            *int64
 	DurationMS              int64
 	ErrorCode               string
+	MissingReasoningPenalty bool
 	RequestMethod           string
 	RequestPath             string
 	RequestHeaders          map[string][]string
