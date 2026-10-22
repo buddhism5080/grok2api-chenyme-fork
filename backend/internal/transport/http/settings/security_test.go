@@ -77,8 +77,9 @@ func TestSettingsResponseIncludesBuildMissingReasoningPenalty(t *testing.T) {
 	models := []string{"grok-4.6"}
 	response := newSettingsResponse(settingsapp.Snapshot{Config: settingsapp.EditableConfig{
 		Routing: settingsapp.RoutingConfig{
-			BuildMissingReasoningPenaltyEnabled:  true,
-			BuildMissingReasoningPenaltyModelIDs: models,
+			BuildMissingReasoningPenaltyEnabled:          true,
+			BuildMissingReasoningPenaltyModelIDs:         models,
+			BuildMissingReasoningPenaltyUserTurnModelIDs: []string{"grok-4.7"},
 		},
 	}})
 	if response.Config.Routing.BuildMissingReasoningPenaltyEnabled == nil || *response.Config.Routing.BuildMissingReasoningPenaltyEnabled != enabled {
@@ -86,6 +87,9 @@ func TestSettingsResponseIncludesBuildMissingReasoningPenalty(t *testing.T) {
 	}
 	if response.Config.Routing.BuildMissingReasoningPenaltyModelIDs == nil || len(*response.Config.Routing.BuildMissingReasoningPenaltyModelIDs) != 1 || (*response.Config.Routing.BuildMissingReasoningPenaltyModelIDs)[0] != "grok-4.6" {
 		t.Fatalf("buildMissingReasoningPenaltyModelIDs = %#v", response.Config.Routing.BuildMissingReasoningPenaltyModelIDs)
+	}
+	if response.Config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs == nil || len(*response.Config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs) != 1 || (*response.Config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs)[0] != "grok-4.7" {
+		t.Fatalf("buildMissingReasoningPenaltyUserTurnModelIDs = %#v", response.Config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs)
 	}
 }
 
@@ -95,12 +99,12 @@ func TestLegacySettingsRequestMayOmitBuildMissingReasoningPenalty(t *testing.T) 
 		t.Fatal(err)
 	}
 	input := dto.toApplication()
-	if input.Routing.BuildMissingReasoningPenaltyEnabledProvided || input.Routing.BuildMissingReasoningPenaltyModelIDsProvided {
+	if input.Routing.BuildMissingReasoningPenaltyEnabledProvided || input.Routing.BuildMissingReasoningPenaltyModelIDsProvided || input.Routing.BuildMissingReasoningPenaltyUserTurnModelIDsProvided {
 		t.Fatal("missing missing-reasoning penalty fields were treated as an explicit update")
 	}
 
 	var explicit settingsConfigDTO
-	if err := json.Unmarshal([]byte(`{"routing":{"buildMissingReasoningPenaltyEnabled":false,"buildMissingReasoningPenaltyModelIDs":["grok-4.6"]}}`), &explicit); err != nil {
+	if err := json.Unmarshal([]byte(`{"routing":{"buildMissingReasoningPenaltyEnabled":false,"buildMissingReasoningPenaltyModelIDs":["grok-4.6"],"buildMissingReasoningPenaltyUserTurnModelIDs":["grok-4.7"]}}`), &explicit); err != nil {
 		t.Fatal(err)
 	}
 	applied := explicit.toApplication()
@@ -109,6 +113,9 @@ func TestLegacySettingsRequestMayOmitBuildMissingReasoningPenalty(t *testing.T) 
 	}
 	if !applied.Routing.BuildMissingReasoningPenaltyModelIDsProvided || len(applied.Routing.BuildMissingReasoningPenaltyModelIDs) != 1 || applied.Routing.BuildMissingReasoningPenaltyModelIDs[0] != "grok-4.6" {
 		t.Fatalf("explicit missing-reasoning models were lost: %#v", applied.Routing)
+	}
+	if !applied.Routing.BuildMissingReasoningPenaltyUserTurnModelIDsProvided || len(applied.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs) != 1 || applied.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs[0] != "grok-4.7" {
+		t.Fatalf("explicit user-turn models were lost: %#v", applied.Routing)
 	}
 }
 

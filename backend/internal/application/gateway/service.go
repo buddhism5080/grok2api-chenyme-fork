@@ -248,8 +248,9 @@ type buildForbiddenReauthPolicy struct {
 }
 
 type buildMissingReasoningPolicy struct {
-	enabled bool
-	models  map[string]struct{}
+	enabled        bool
+	models         map[string]struct{}
+	userTurnModels map[string]struct{}
 }
 
 func (s *Service) ConfigureMedia(repository repository.MediaJobRepository, concurrency int) {
@@ -495,7 +496,8 @@ func (s *Service) UpdateMarkBuildChatDeniedAsReauth(enabled bool) {
 
 // UpdateBuildMissingReasoningPenalty 热更新 Build 无推理输出的调度惩罚。
 // 默认关闭；开启后仅对指定公开模型 ID 生效。命中条件：HTTP 200、outputTokens>20、reasoningTokens=0。
-func (s *Service) UpdateBuildMissingReasoningPenalty(enabled bool, modelIDs []string) {
+// userTurnModelIDs 中的模型额外要求最后一条输入是用户 prompt；工具调用结果轮次不惩罚。
+func (s *Service) UpdateBuildMissingReasoningPenalty(enabled bool, modelIDs, userTurnModelIDs []string) {
 	models := make(map[string]struct{}, len(modelIDs))
 	for _, raw := range modelIDs {
 		value := strings.ToLower(strings.TrimSpace(raw))
@@ -504,8 +506,16 @@ func (s *Service) UpdateBuildMissingReasoningPenalty(enabled bool, modelIDs []st
 		}
 		models[value] = struct{}{}
 	}
+	userTurnModels := make(map[string]struct{}, len(userTurnModelIDs))
+	for _, raw := range userTurnModelIDs {
+		value := strings.ToLower(strings.TrimSpace(raw))
+		if value == "" {
+			continue
+		}
+		userTurnModels[value] = struct{}{}
+	}
 	s.buildMissingReasoningMu.Lock()
-	s.buildMissingReasoningPolicy = buildMissingReasoningPolicy{enabled: enabled, models: models}
+	s.buildMissingReasoningPolicy = buildMissingReasoningPolicy{enabled: enabled, models: models, userTurnModels: userTurnModels}
 	s.buildMissingReasoningMu.Unlock()
 }
 
@@ -1195,7 +1205,7 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 				}
 				if successful {
 					_ = budget.run("missing_reasoning_penalty", finalizationMetadataBudget, func(stageCtx context.Context) error {
-						s.maybePenalizeBuildMissingReasoning(record, credential, publicModel)
+						s.maybePenalizeBuildMissingReasoning(record, credential, publicModel, input.Body)
 						return nil
 					})
 				}
@@ -1872,7 +1882,7 @@ func isSSOCredentialRejected(err error, credential accountdomain.Credential) boo
 	return ok && status == http.StatusUnauthorized
 }
 
-func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, credential accountdomain.Credential, publicModel string) {
+func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, credential accountdomain.Credential, publicModel string, body []byte) {
 	if s == nil || s.selector == nil || record.AccountID == nil {
 		return
 	}
@@ -1884,6 +1894,9 @@ func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, creden
 		modelID = strings.ToLower(strings.TrimSpace(record.ModelPublicID))
 	}
 	if !missingReasoningPenaltyApplies(credential.Provider, record.StatusCode, record.OutputTokens, record.ReasoningTokens, modelID, policy.enabled, policy.models) {
+		return
+	}
+	if missingReasoningUserTurnGateBlocks(modelID, policy.userTurnModels, body) {
 		return
 	}
 	s.selector.RecordMissingReasoningPenalty(*record.AccountID, time.Now().UTC())

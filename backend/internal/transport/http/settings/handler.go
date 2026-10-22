@@ -98,19 +98,20 @@ type batchConfigDTO struct {
 }
 
 type routingConfigDTO struct {
-	BuildMissingReasoningPenaltyEnabled  *bool                       `json:"buildMissingReasoningPenaltyEnabled,omitempty"`
-	BuildMissingReasoningPenaltyModelIDs *[]string                   `json:"buildMissingReasoningPenaltyModelIDs,omitempty"`
-	BuildUsagePenaltyTokenThreshold      *int64                      `json:"buildUsagePenaltyTokenThreshold,omitempty"`
-	StickyTTL                            string                      `json:"stickyTTL"`
-	CooldownBase                         string                      `json:"cooldownBase"`
-	CooldownMax                          string                      `json:"cooldownMax"`
-	CapacityWait                         string                      `json:"capacityWait"`
-	MaxAttempts                          int                         `json:"maxAttempts"`
-	VideoMaxAttempts                     int                         `json:"videoMaxAttempts"`
-	PreferFreeBuild                      bool                        `json:"preferFreeBuild"`
-	MarkBuildChatDeniedAsReauth          *bool                       `json:"markBuildChatDeniedAsReauth,omitempty"`
-	AccountIsolatedConnections           *bool                       `json:"accountIsolatedConnections,omitempty"`
-	SegmentedSelector                    *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
+	BuildMissingReasoningPenaltyUserTurnModelIDs *[]string                   `json:"buildMissingReasoningPenaltyUserTurnModelIDs,omitempty"`
+	BuildMissingReasoningPenaltyEnabled          *bool                       `json:"buildMissingReasoningPenaltyEnabled,omitempty"`
+	BuildMissingReasoningPenaltyModelIDs         *[]string                   `json:"buildMissingReasoningPenaltyModelIDs,omitempty"`
+	BuildUsagePenaltyTokenThreshold              *int64                      `json:"buildUsagePenaltyTokenThreshold,omitempty"`
+	StickyTTL                                    string                      `json:"stickyTTL"`
+	CooldownBase                                 string                      `json:"cooldownBase"`
+	CooldownMax                                  string                      `json:"cooldownMax"`
+	CapacityWait                                 string                      `json:"capacityWait"`
+	MaxAttempts                                  int                         `json:"maxAttempts"`
+	VideoMaxAttempts                             int                         `json:"videoMaxAttempts"`
+	PreferFreeBuild                              bool                        `json:"preferFreeBuild"`
+	MarkBuildChatDeniedAsReauth                  *bool                       `json:"markBuildChatDeniedAsReauth,omitempty"`
+	AccountIsolatedConnections                   *bool                       `json:"accountIsolatedConnections,omitempty"`
+	SegmentedSelector                            *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
 }
 
 type segmentedSelectorConfigDTO struct {
@@ -234,17 +235,19 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 		Routing: settingsapp.RoutingConfig{
 			StickyTTL: value.Routing.StickyTTL, CooldownBase: value.Routing.CooldownBase,
 			CooldownMax: value.Routing.CooldownMax, CapacityWait: value.Routing.CapacityWait, MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-			BuildMissingReasoningPenaltyEnabled:          boolValue(value.Routing.BuildMissingReasoningPenaltyEnabled),
-			BuildMissingReasoningPenaltyEnabledProvided:  value.Routing.BuildMissingReasoningPenaltyEnabled != nil,
-			BuildMissingReasoningPenaltyModelIDs:         stringSliceValue(value.Routing.BuildMissingReasoningPenaltyModelIDs),
-			BuildMissingReasoningPenaltyModelIDsProvided: value.Routing.BuildMissingReasoningPenaltyModelIDs != nil,
-			BuildUsagePenaltyTokenThreshold:              int64Value(value.Routing.BuildUsagePenaltyTokenThreshold),
-			BuildUsagePenaltyTokenThresholdProvided:      value.Routing.BuildUsagePenaltyTokenThreshold != nil,
-			PreferFreeBuild:                              value.Routing.PreferFreeBuild,
-			MarkBuildChatDeniedAsReauth:                  boolValue(value.Routing.MarkBuildChatDeniedAsReauth),
-			MarkBuildChatDeniedAsReauthProvided:          value.Routing.MarkBuildChatDeniedAsReauth != nil,
-			AccountIsolatedConnections:                   boolValue(value.Routing.AccountIsolatedConnections),
-			AccountIsolatedConnectionsProvided:           value.Routing.AccountIsolatedConnections != nil,
+			BuildMissingReasoningPenaltyUserTurnModelIDs:         stringSliceValue(value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs),
+			BuildMissingReasoningPenaltyUserTurnModelIDsProvided: value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs != nil,
+			BuildMissingReasoningPenaltyEnabled:                  boolValue(value.Routing.BuildMissingReasoningPenaltyEnabled),
+			BuildMissingReasoningPenaltyEnabledProvided:          value.Routing.BuildMissingReasoningPenaltyEnabled != nil,
+			BuildMissingReasoningPenaltyModelIDs:                 stringSliceValue(value.Routing.BuildMissingReasoningPenaltyModelIDs),
+			BuildMissingReasoningPenaltyModelIDsProvided:         value.Routing.BuildMissingReasoningPenaltyModelIDs != nil,
+			BuildUsagePenaltyTokenThreshold:                      int64Value(value.Routing.BuildUsagePenaltyTokenThreshold),
+			BuildUsagePenaltyTokenThresholdProvided:              value.Routing.BuildUsagePenaltyTokenThreshold != nil,
+			PreferFreeBuild:                                      value.Routing.PreferFreeBuild,
+			MarkBuildChatDeniedAsReauth:                          boolValue(value.Routing.MarkBuildChatDeniedAsReauth),
+			MarkBuildChatDeniedAsReauthProvided:                  value.Routing.MarkBuildChatDeniedAsReauth != nil,
+			AccountIsolatedConnections:                           boolValue(value.Routing.AccountIsolatedConnections),
+			AccountIsolatedConnectionsProvided:                   value.Routing.AccountIsolatedConnections != nil,
 		},
 		Audit: settingsapp.AuditConfig{
 			BufferSize: value.Audit.BufferSize, BatchSize: value.Audit.BatchSize, FlushInterval: value.Audit.FlushInterval, CommitDelayMS: value.Audit.CommitDelayMS,
@@ -328,12 +331,13 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 			Routing: routingConfigDTO{
 				StickyTTL: config.Routing.StickyTTL, CooldownBase: config.Routing.CooldownBase,
 				CooldownMax: config.Routing.CooldownMax, CapacityWait: config.Routing.CapacityWait, MaxAttempts: config.Routing.MaxAttempts, VideoMaxAttempts: config.Routing.VideoMaxAttempts,
-				BuildMissingReasoningPenaltyEnabled:  boolPointer(config.Routing.BuildMissingReasoningPenaltyEnabled),
-				BuildMissingReasoningPenaltyModelIDs: stringSlicePointer(config.Routing.BuildMissingReasoningPenaltyModelIDs),
-				BuildUsagePenaltyTokenThreshold:      int64Pointer(config.Routing.BuildUsagePenaltyTokenThreshold),
-				MarkBuildChatDeniedAsReauth:          boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),
-				PreferFreeBuild:                      config.Routing.PreferFreeBuild,
-				AccountIsolatedConnections:           boolPointer(config.Routing.AccountIsolatedConnections),
+				BuildMissingReasoningPenaltyUserTurnModelIDs: stringSlicePointer(config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs),
+				BuildMissingReasoningPenaltyEnabled:          boolPointer(config.Routing.BuildMissingReasoningPenaltyEnabled),
+				BuildMissingReasoningPenaltyModelIDs:         stringSlicePointer(config.Routing.BuildMissingReasoningPenaltyModelIDs),
+				BuildUsagePenaltyTokenThreshold:              int64Pointer(config.Routing.BuildUsagePenaltyTokenThreshold),
+				MarkBuildChatDeniedAsReauth:                  boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),
+				PreferFreeBuild:                              config.Routing.PreferFreeBuild,
+				AccountIsolatedConnections:                   boolPointer(config.Routing.AccountIsolatedConnections),
 				SegmentedSelector: &segmentedSelectorConfigDTO{
 					Enabled: config.Routing.SegmentedSelector.Enabled, MinCandidates: config.Routing.SegmentedSelector.MinCandidates,
 					WindowSize: config.Routing.SegmentedSelector.WindowSize,

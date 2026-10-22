@@ -110,15 +110,17 @@ type RoutingConfig struct {
 	// older management client omits the newly added field.
 	// BuildUsagePenaltyTokenThreshold is the Build Free input+output token latch.
 	// 0 disables the guard. Older clients omit the field; Provided preserves the current value.
-	BuildMissingReasoningPenaltyEnabled          bool
-	BuildMissingReasoningPenaltyEnabledProvided  bool
-	BuildMissingReasoningPenaltyModelIDs         []string
-	BuildMissingReasoningPenaltyModelIDsProvided bool
-	BuildUsagePenaltyTokenThreshold         int64
-	BuildUsagePenaltyTokenThresholdProvided bool
-	AccountIsolatedConnectionsProvided      bool
-	SegmentedSelector                       SegmentedSelectorConfig
-	SegmentedSelectorProvided               bool
+	BuildMissingReasoningPenaltyUserTurnModelIDs         []string
+	BuildMissingReasoningPenaltyUserTurnModelIDsProvided bool
+	BuildMissingReasoningPenaltyEnabled                  bool
+	BuildMissingReasoningPenaltyEnabledProvided          bool
+	BuildMissingReasoningPenaltyModelIDs                 []string
+	BuildMissingReasoningPenaltyModelIDsProvided         bool
+	BuildUsagePenaltyTokenThreshold                      int64
+	BuildUsagePenaltyTokenThresholdProvided              bool
+	AccountIsolatedConnectionsProvided                   bool
+	SegmentedSelector                                    SegmentedSelectorConfig
+	SegmentedSelectorProvided                            bool
 }
 
 type SegmentedSelectorConfig struct {
@@ -412,6 +414,10 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 	if value.Routing.BuildMissingReasoningPenaltyModelIDs != nil {
 		buildMissingReasoningPenaltyModelIDs = append([]string(nil), value.Routing.BuildMissingReasoningPenaltyModelIDs...)
 	}
+	buildMissingReasoningPenaltyUserTurnModelIDs := append([]string(nil), base.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs...)
+	if value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs != nil {
+		buildMissingReasoningPenaltyUserTurnModelIDs = append([]string(nil), value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs...)
+	}
 	if value.Routing.SegmentedSelector != nil {
 		segmentedEnabled = value.Routing.SegmentedSelector.ActiveEnabled
 		segmentedMinCandidates = value.Routing.SegmentedSelector.MinCandidates
@@ -420,16 +426,17 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 	base.Routing = config.RoutingConfig{
 		StickyTTL: config.Duration(value.Routing.StickyTTL), CooldownBase: config.Duration(value.Routing.CooldownBase),
 		CooldownMax: config.Duration(value.Routing.CooldownMax), CapacityWait: config.Duration(capacityWait), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-		BuildMissingReasoningPenaltyEnabled:  buildMissingReasoningPenaltyEnabled,
-		BuildMissingReasoningPenaltyModelIDs: normalizeWatchedModelIDs(buildMissingReasoningPenaltyModelIDs),
-		BuildUsagePenaltyTokenThreshold: value.Routing.BuildUsagePenaltyTokenThreshold,
-		MarkBuildChatDeniedAsReauth:     value.Routing.MarkBuildChatDeniedAsReauth,
-		PreferFreeBuild:                 value.Routing.PreferFreeBuild,
-		AccountIsolatedConnections:      accountIsolatedConnections,
-		SegmentedSelectorEnabled:        segmentedEnabled,
-		SegmentedMinCandidates:          segmentedMinCandidates,
-		SegmentedWindowSize:             segmentedWindowSize,
-		ReasoningReplayEnabled:          base.Routing.ReasoningReplayEnabled, ReasoningReplayTTL: base.Routing.ReasoningReplayTTL,
+		BuildMissingReasoningPenaltyUserTurnModelIDs: normalizeWatchedModelIDs(buildMissingReasoningPenaltyUserTurnModelIDs),
+		BuildMissingReasoningPenaltyEnabled:          buildMissingReasoningPenaltyEnabled,
+		BuildMissingReasoningPenaltyModelIDs:         normalizeWatchedModelIDs(buildMissingReasoningPenaltyModelIDs),
+		BuildUsagePenaltyTokenThreshold:              value.Routing.BuildUsagePenaltyTokenThreshold,
+		MarkBuildChatDeniedAsReauth:                  value.Routing.MarkBuildChatDeniedAsReauth,
+		PreferFreeBuild:                              value.Routing.PreferFreeBuild,
+		AccountIsolatedConnections:                   accountIsolatedConnections,
+		SegmentedSelectorEnabled:                     segmentedEnabled,
+		SegmentedMinCandidates:                       segmentedMinCandidates,
+		SegmentedWindowSize:                          segmentedWindowSize,
+		ReasoningReplayEnabled:                       base.Routing.ReasoningReplayEnabled, ReasoningReplayTTL: base.Routing.ReasoningReplayTTL,
 		ReasoningReplayMaxEntries: base.Routing.ReasoningReplayMaxEntries,
 	}
 	commitDelay := base.Audit.CommitDelay.Value()
@@ -516,12 +523,13 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 		Routing: settingsdomain.RoutingConfig{
 			StickyTTL: value.Routing.StickyTTL.Value(), CooldownBase: value.Routing.CooldownBase.Value(),
 			CooldownMax: value.Routing.CooldownMax.Value(), CapacityWait: value.Routing.CapacityWait.Value(), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
-			BuildMissingReasoningPenaltyEnabled:  &buildMissingReasoningPenaltyEnabled,
-			BuildMissingReasoningPenaltyModelIDs: append([]string(nil), value.Routing.BuildMissingReasoningPenaltyModelIDs...),
-			BuildUsagePenaltyTokenThreshold: value.Routing.BuildUsagePenaltyTokenThreshold,
-			MarkBuildChatDeniedAsReauth:     value.Routing.MarkBuildChatDeniedAsReauth,
-			PreferFreeBuild:                 value.Routing.PreferFreeBuild,
-			AccountIsolatedConnections:      &accountIsolatedConnections,
+			BuildMissingReasoningPenaltyUserTurnModelIDs: append([]string(nil), value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs...),
+			BuildMissingReasoningPenaltyEnabled:          &buildMissingReasoningPenaltyEnabled,
+			BuildMissingReasoningPenaltyModelIDs:         append([]string(nil), value.Routing.BuildMissingReasoningPenaltyModelIDs...),
+			BuildUsagePenaltyTokenThreshold:              value.Routing.BuildUsagePenaltyTokenThreshold,
+			MarkBuildChatDeniedAsReauth:                  value.Routing.MarkBuildChatDeniedAsReauth,
+			PreferFreeBuild:                              value.Routing.PreferFreeBuild,
+			AccountIsolatedConnections:                   &accountIsolatedConnections,
 			SegmentedSelector: &settingsdomain.SegmentedSelectorConfig{
 				ActiveEnabled: value.Routing.SegmentedSelectorEnabled,
 				MinCandidates: value.Routing.SegmentedMinCandidates, WindowSize: value.Routing.SegmentedWindowSize,
@@ -624,6 +632,9 @@ func mergeEditable(current config.Config, input EditableConfig) (config.Config, 
 	}
 	if input.Routing.BuildMissingReasoningPenaltyModelIDsProvided {
 		next.Routing.BuildMissingReasoningPenaltyModelIDs = normalizeWatchedModelIDs(input.Routing.BuildMissingReasoningPenaltyModelIDs)
+	}
+	if input.Routing.BuildMissingReasoningPenaltyUserTurnModelIDsProvided {
+		next.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs = normalizeWatchedModelIDs(input.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs)
 	}
 	if input.Routing.SegmentedSelectorProvided {
 		next.Routing.SegmentedSelectorEnabled = input.Routing.SegmentedSelector.Enabled
@@ -773,17 +784,19 @@ func toEditable(cfg config.Config) EditableConfig {
 		Routing: RoutingConfig{
 			StickyTTL: cfg.Routing.StickyTTL.String(), CooldownBase: cfg.Routing.CooldownBase.String(),
 			CooldownMax: cfg.Routing.CooldownMax.String(), CapacityWait: cfg.Routing.CapacityWait.String(), MaxAttempts: cfg.Routing.MaxAttempts, VideoMaxAttempts: cfg.Routing.VideoMaxAttempts,
-			BuildMissingReasoningPenaltyEnabled:          cfg.Routing.BuildMissingReasoningPenaltyEnabled,
-			BuildMissingReasoningPenaltyEnabledProvided:  true,
-			BuildMissingReasoningPenaltyModelIDs:         append([]string(nil), cfg.Routing.BuildMissingReasoningPenaltyModelIDs...),
-			BuildMissingReasoningPenaltyModelIDsProvided: true,
-			BuildUsagePenaltyTokenThreshold:         cfg.Routing.BuildUsagePenaltyTokenThreshold,
-			BuildUsagePenaltyTokenThresholdProvided: true,
-			MarkBuildChatDeniedAsReauth:             cfg.Routing.MarkBuildChatDeniedAsReauth,
-			MarkBuildChatDeniedAsReauthProvided:     true,
-			PreferFreeBuild:                         cfg.Routing.PreferFreeBuild,
-			AccountIsolatedConnections:              cfg.Routing.AccountIsolatedConnections,
-			AccountIsolatedConnectionsProvided:      true,
+			BuildMissingReasoningPenaltyUserTurnModelIDs:         append([]string(nil), cfg.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs...),
+			BuildMissingReasoningPenaltyUserTurnModelIDsProvided: true,
+			BuildMissingReasoningPenaltyEnabled:                  cfg.Routing.BuildMissingReasoningPenaltyEnabled,
+			BuildMissingReasoningPenaltyEnabledProvided:          true,
+			BuildMissingReasoningPenaltyModelIDs:                 append([]string(nil), cfg.Routing.BuildMissingReasoningPenaltyModelIDs...),
+			BuildMissingReasoningPenaltyModelIDsProvided:         true,
+			BuildUsagePenaltyTokenThreshold:                      cfg.Routing.BuildUsagePenaltyTokenThreshold,
+			BuildUsagePenaltyTokenThresholdProvided:              true,
+			MarkBuildChatDeniedAsReauth:                          cfg.Routing.MarkBuildChatDeniedAsReauth,
+			MarkBuildChatDeniedAsReauthProvided:                  true,
+			PreferFreeBuild:                                      cfg.Routing.PreferFreeBuild,
+			AccountIsolatedConnections:                           cfg.Routing.AccountIsolatedConnections,
+			AccountIsolatedConnectionsProvided:                   true,
 			SegmentedSelector: SegmentedSelectorConfig{
 				Enabled: cfg.Routing.SegmentedSelectorEnabled, MinCandidates: cfg.Routing.SegmentedMinCandidates,
 				WindowSize: cfg.Routing.SegmentedWindowSize,
