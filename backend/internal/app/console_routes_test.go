@@ -51,4 +51,12 @@ func TestConsoleRoutesUseStableProviderNamespace(t *testing.T) {
 	if !seen["Console/grok-imagine-video-1.5"]["video"] {
 		t.Fatal("Console video 1.5 route is missing")
 	}
+	if !seen["Console/grok-imagine-video-1.5-lite"]["video"] {
+		t.Fatal("Console video 1.5 lite route is missing")
+	}
+	for _, modelID := range []string{"Console/grok-4.6", "Console/grok-4.7"} {
+		if !seen[modelID]["responses"] {
+			t.Fatalf("Console chat route %s is missing", modelID)
+		}
+	}
 }

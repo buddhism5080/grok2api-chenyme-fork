@@ -31,6 +31,8 @@ var catalog = []ModelSpec{
 	{PublicID: "grok-4.20-0309-non-reasoning", UpstreamModel: "grok-4.20-0309-non-reasoning", MaxOutputTokens: 1_000_000},
 	{PublicID: "grok-4.20-multi-agent-0309", UpstreamModel: "grok-4.20-multi-agent-0309", SupportsReasoning: true, SupportsReasoningEffort: true, MaxOutputTokens: 1_000_000},
 	{PublicID: "grok-4.5", UpstreamModel: "grok-4.5", SupportsReasoning: true, SupportsReasoningEffort: true, DefaultReasoningEffort: "medium", MaxOutputTokens: 1_000_000, NoSearchTools: true},
+	{PublicID: "grok-4.6", UpstreamModel: "grok-4.6", SupportsReasoning: true, SupportsReasoningEffort: true, DefaultReasoningEffort: "medium", MaxOutputTokens: 1_000_000},
+	{PublicID: "grok-4.7", UpstreamModel: "grok-4.7", SupportsReasoning: true, SupportsReasoningEffort: true, DefaultReasoningEffort: "medium", MaxOutputTokens: 1_000_000},
 	{PublicID: "grok-build-0.1", UpstreamModel: "grok-build-0.1", MaxOutputTokens: 256_000},
 }
 
@@ -48,6 +50,7 @@ var mediaCatalog = []struct {
 	{PublicID: "grok-imagine-video", UpstreamModel: "grok-imagine-video", Capabilities: []modeldomain.Capability{modeldomain.CapabilityVideo}},
 	// Free Console accounts can use the 1.5 video model on the official Console media API.
 	{PublicID: "grok-imagine-video-1.5", UpstreamModel: "grok-imagine-video-1.5", Capabilities: []modeldomain.Capability{modeldomain.CapabilityVideo}},
+	{PublicID: "grok-imagine-video-1.5-lite", UpstreamModel: "grok-imagine-video-1.5-lite", Capabilities: []modeldomain.Capability{modeldomain.CapabilityVideo}},
 	{PublicID: "grok-voice-latest", UpstreamModel: "grok-voice-latest", Capabilities: []modeldomain.Capability{modeldomain.CapabilityRealtime, modeldomain.CapabilityTTS}},
 	{PublicID: "grok-voice-think-fast-2.0", UpstreamModel: "grok-voice-think-fast-2.0", Capabilities: []modeldomain.Capability{modeldomain.CapabilityRealtime, modeldomain.CapabilityTTS}},
 	{PublicID: "grok-voice-think-fast-1.0", UpstreamModel: "grok-voice-think-fast-1.0", Capabilities: []modeldomain.Capability{modeldomain.CapabilityRealtime, modeldomain.CapabilityTTS}},
@@ -66,6 +69,8 @@ var aliases = []provider.ModelAlias{
 	consoleAlias("grok-4.20-0309-non-reasoning-console", "grok-4.20-0309-non-reasoning", "grok-4.20-0309-non-reasoning", ""),
 	consoleAlias("grok-4.20-multi-agent-console", "grok-4.20-multi-agent-0309", "grok-4.20-multi-agent-0309", ""),
 	consoleAlias("grok-4.5-console", "grok-4.5", "grok-4.5", ""),
+	consoleAlias("grok-4.6-console", "grok-4.6", "grok-4.6", ""),
+	consoleAlias("grok-4.7-console", "grok-4.7", "grok-4.7", ""),
 	consoleAlias("grok-build-console", "grok-build-0.1", "grok-build-0.1", ""),
 	consoleAlias("grok-4.3-low", "grok-4.3", "grok-4.3", "low"),
 	consoleAlias("grok-4.3-medium", "grok-4.3", "grok-4.3", "medium"),
@@ -74,6 +79,14 @@ var aliases = []provider.ModelAlias{
 	consoleAlias("grok-4.20-multi-agent-medium", "grok-4.20-multi-agent-0309", "grok-4.20-multi-agent-0309", "medium"),
 	consoleAlias("grok-4.20-multi-agent-high", "grok-4.20-multi-agent-0309", "grok-4.20-multi-agent-0309", "high"),
 	consoleAlias("grok-4.20-multi-agent-xhigh", "grok-4.20-multi-agent-0309", "grok-4.20-multi-agent-0309", "xhigh"),
+	consoleAlias("grok-4.6-low", "grok-4.6", "grok-4.6", "low"),
+	consoleAlias("grok-4.6-medium", "grok-4.6", "grok-4.6", "medium"),
+	consoleAlias("grok-4.6-high", "grok-4.6", "grok-4.6", "high"),
+	consoleAlias("grok-4.6-xhigh", "grok-4.6", "grok-4.6", "xhigh"),
+	consoleAlias("grok-4.7-low", "grok-4.7", "grok-4.7", "low"),
+	consoleAlias("grok-4.7-medium", "grok-4.7", "grok-4.7", "medium"),
+	consoleAlias("grok-4.7-high", "grok-4.7", "grok-4.7", "high"),
+	consoleAlias("grok-4.7-xhigh", "grok-4.7", "grok-4.7", "xhigh"),
 }
 
 func consoleAlias(alias, publicModel, upstreamModel, effort string) provider.ModelAlias {

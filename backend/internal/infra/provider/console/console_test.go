@@ -49,6 +49,8 @@ func TestCatalogContainsAllConsoleModelsAndAliases(t *testing.T) {
 		{publicID: "Console/grok-4.20-0309-non-reasoning", capability: modeldomain.CapabilityResponses}: "grok-4.20-0309-non-reasoning",
 		{publicID: "Console/grok-4.20-multi-agent-0309", capability: modeldomain.CapabilityResponses}:   "grok-4.20-multi-agent-0309",
 		{publicID: "Console/grok-4.5", capability: modeldomain.CapabilityResponses}:                     "grok-4.5",
+		{publicID: "Console/grok-4.6", capability: modeldomain.CapabilityResponses}:                     "grok-4.6",
+		{publicID: "Console/grok-4.7", capability: modeldomain.CapabilityResponses}:                     "grok-4.7",
 		{publicID: "Console/grok-build-0.1", capability: modeldomain.CapabilityResponses}:               "grok-build-0.1",
 		{publicID: "Console/grok-imagine-image", capability: modeldomain.CapabilityImage}:               "grok-imagine-image",
 		{publicID: "Console/grok-imagine-image", capability: modeldomain.CapabilityImageEdit}:           "grok-imagine-image",
@@ -58,6 +60,7 @@ func TestCatalogContainsAllConsoleModelsAndAliases(t *testing.T) {
 		{publicID: "Console/grok-imagine-image-2.0", capability: modeldomain.CapabilityImageEdit}:       "grok-imagine-image-2.0",
 		{publicID: "Console/grok-imagine-video", capability: modeldomain.CapabilityVideo}:               "grok-imagine-video",
 		{publicID: "Console/grok-imagine-video-1.5", capability: modeldomain.CapabilityVideo}:           "grok-imagine-video-1.5",
+		{publicID: "Console/grok-imagine-video-1.5-lite", capability: modeldomain.CapabilityVideo}:      "grok-imagine-video-1.5-lite",
 		{publicID: "Console/grok-voice-latest", capability: modeldomain.CapabilityRealtime}:             "grok-voice-latest",
 		{publicID: "Console/grok-voice-latest", capability: modeldomain.CapabilityTTS}:                  "grok-voice-latest",
 		{publicID: "Console/grok-voice-think-fast-2.0", capability: modeldomain.CapabilityRealtime}:     "grok-voice-think-fast-2.0",
@@ -79,8 +82,8 @@ func TestCatalogContainsAllConsoleModelsAndAliases(t *testing.T) {
 		}
 	}
 	aliases := Aliases()
-	if len(aliases) != 14 {
-		t.Fatalf("aliases = %d, want 14", len(aliases))
+	if len(aliases) != 24 {
+		t.Fatalf("aliases = %d, want 24", len(aliases))
 	}
 	registry := provider.NewRegistry(NewAdapter(Config{}, nil, nil, nil))
 	if registry.SupportsStoredResponses(account.ProviderConsole) {
@@ -92,6 +95,9 @@ func TestCatalogContainsAllConsoleModelsAndAliases(t *testing.T) {
 		"grok-4.20-0309-non-reasoning-console", "grok-4.20-multi-agent-console", "grok-build-console",
 		"grok-4.3-low", "grok-4.3-medium", "grok-4.3-high",
 		"grok-4.5-console",
+		"grok-4.6-console", "grok-4.7-console",
+		"grok-4.6-low", "grok-4.6-medium", "grok-4.6-high", "grok-4.6-xhigh",
+		"grok-4.7-low", "grok-4.7-medium", "grok-4.7-high", "grok-4.7-xhigh",
 		"grok-4.20-multi-agent-low", "grok-4.20-multi-agent-medium", "grok-4.20-multi-agent-high", "grok-4.20-multi-agent-xhigh",
 	} {
 		alias, ok := registry.ResolveModelAlias(name)
@@ -106,6 +112,7 @@ func TestCatalogContainsAllConsoleModelsAndAliases(t *testing.T) {
 	for model, want := range map[string]string{
 		"grok-4.5": QuotaMode, "grok-imagine-image-quality": QuotaModeImage, "grok-imagine-image-2.0": QuotaModeImage,
 		"grok-imagine-image": QuotaModeImage, "grok-imagine-video": QuotaModeVideo, "grok-imagine-video-1.5": QuotaModeVideo,
+		"grok-imagine-video-1.5-lite": QuotaModeVideo, "grok-4.6": QuotaMode, "grok-4.7": QuotaMode,
 		"grok-voice-latest": QuotaMode, "grok-voice-think-fast-2.0": QuotaMode, "grok-voice-think-fast-1.0": QuotaMode, "grok-stt": QuotaMode,
 	} {
 		if got := adapter.QuotaMode(model); got != want {
