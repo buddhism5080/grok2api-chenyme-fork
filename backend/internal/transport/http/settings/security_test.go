@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -90,6 +91,17 @@ func TestSettingsResponseIncludesBuildMissingReasoningPenalty(t *testing.T) {
 	}
 	if response.Config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs == nil || len(*response.Config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs) != 1 || (*response.Config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs)[0] != "grok-4.7" {
 		t.Fatalf("buildMissingReasoningPenaltyUserTurnModelIDs = %#v", response.Config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs)
+	}
+}
+
+func TestSettingsResponseEncodesUnsetUserTurnModelsAsEmptyArray(t *testing.T) {
+	response := newSettingsResponse(settingsapp.Snapshot{Config: settingsapp.EditableConfig{}})
+	encoded, err := json.Marshal(response.Config.Routing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"buildMissingReasoningPenaltyUserTurnModelIDs":[]`)) {
+		t.Fatalf("unset user-turn models = %s", encoded)
 	}
 }
 

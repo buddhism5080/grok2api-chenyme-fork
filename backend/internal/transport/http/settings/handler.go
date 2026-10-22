@@ -420,6 +420,8 @@ func stringSliceValue(value *[]string) []string {
 }
 
 func stringSlicePointer(value []string) *[]string {
-	cloned := append([]string(nil), value...)
+	// A nil slice encodes as JSON null. The settings page treats null as an
+	// invalid response, so an unset list is an empty array.
+	cloned := append([]string{}, value...)
 	return &cloned
 }
