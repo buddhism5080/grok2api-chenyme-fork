@@ -82,6 +82,18 @@ const (
 	testNewKeyID = "99999999-8888-4777-8666-555555555555"
 )
 
+func consoleHomeNamedKey(name, teamID, apiKeyID string, disabled bool, acls []string) string {
+	state := "false"
+	if disabled {
+		state = "true"
+	}
+	quoted := make([]string, len(acls))
+	for i, acl := range acls {
+		quoted[i] = `\"` + acl + `\"`
+	}
+	return `{\"name\":\"` + name + `\",\"teamId\":\"` + teamID + `\",\"apiKeyId\":\"` + apiKeyID + `\",\"apiKey\":\"\",\"disabled\":` + state + `,\"aclStrings\":[` + strings.Join(quoted, ",") + `]}`
+}
+
 func TestParseConsoleHomeSkipsDisabledKeysAndReadsTeam(t *testing.T) {
 	t.Parallel()
 	disabledKey := "00000000-0000-4000-8000-000000000001"
@@ -93,6 +105,27 @@ func TestParseConsoleHomeSkipsDisabledKeysAndReadsTeam(t *testing.T) {
 	empty := parseConsoleHome([]byte(consoleHomeHTML(testTeamID)))
 	if empty.apiKeyID != "" || empty.teamID != testTeamID {
 		t.Fatalf("empty home = %#v", empty)
+	}
+}
+
+func TestParseConsoleHomePrefersChatKeyOverImageKey(t *testing.T) {
+	t.Parallel()
+	imageID := "11111111-2222-4333-8444-555555555555"
+	image := consoleHomeNamedKey("xAI Imagine Playground", testTeamID, imageID, false, []string{"api-key:endpoint:image", "api-key:endpoint:video", "api-key:model:*"})
+	chat := consoleHomeKey(testTeamID, testNewKeyID, false)
+	home := parseConsoleHome([]byte(consoleHomeHTML(testTeamID, image, ",", chat)))
+	if home.apiKeyID != testNewKeyID || home.teamID != testTeamID {
+		t.Fatalf("home = %#v", home)
+	}
+	onlyImage := parseConsoleHome([]byte(consoleHomeHTML(testTeamID, image)))
+	if onlyImage.apiKeyID != "" || onlyImage.teamID != testTeamID {
+		t.Fatalf("image-only home = %#v", onlyImage)
+	}
+	narrowID := "22222222-3333-4444-8555-666666666666"
+	narrow := consoleHomeNamedKey("xAI Chat Playground", testTeamID, narrowID, false, []string{"api-key:endpoint:chat", "api-key:model:*"})
+	narrowHome := parseConsoleHome([]byte(consoleHomeHTML(testTeamID, image, ",", narrow)))
+	if narrowHome.apiKeyID != narrowID {
+		t.Fatalf("narrow home = %#v", narrowHome)
 	}
 }
 

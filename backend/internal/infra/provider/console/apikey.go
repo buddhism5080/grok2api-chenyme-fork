@@ -22,8 +22,10 @@ import (
 
 // Free Console accounts must send the team's apiKeyId as x-apikey on every
 // /v1 inference request; without it the upstream answers 429 "provision an API
-// key". The key is read from the Console home page SSR payload and created
-// only when the team has none, because CreateApiKey has no idempotency guard.
+// key". The key is read from the Console home page SSR payload. An enabled
+// key is reused only when its ACLs can call chat (endpoint:* or endpoint:chat).
+// Image-only keys are skipped. A key is created only when no chat-capable key
+// exists, because CreateApiKey has no idempotency guard.
 const (
 	consoleAPIKeyHeader       = "x-apikey"
 	consoleAPIKeyName         = "xAI Chat Playground"
@@ -149,8 +151,9 @@ func (a *Adapter) saveConsoleAPIKeyID(ctx context.Context, accountID uint64, api
 	}
 }
 
-// resolveConsoleAPIKey is the read-then-create sequence: reuse any enabled
-// team key from the Console home page and create one only when none exists.
+// resolveConsoleAPIKey is the read-then-create sequence: reuse an enabled
+// chat-capable key from the Console home page and create one only when the
+// team has none. Image and video keys cannot call /v1/responses.
 func (a *Adapter) resolveConsoleAPIKey(ctx context.Context, credential account.Credential, ssoToken string, lease *infraegress.Lease) (string, error) {
 	home, err := a.readConsoleHome(ctx, ssoToken, lease)
 	if err != nil {
@@ -256,9 +259,9 @@ func (a *Adapter) readConsoleHome(ctx context.Context, ssoToken string, lease *i
 	return consoleHome{}, fmt.Errorf("Console 首页跳转次数超过 %d", consoleHomeMaxRedirects)
 }
 
-// parseConsoleHome extracts the first enabled apiKeyId and the team id from
-// the Next.js SSR payload. The payload embeds JSON as escaped string literals
-// (\"apiKeyId\":\"…\", sometimes escaped twice); UUIDs never contain
+// parseConsoleHome extracts the team id and the first enabled apiKeyId whose
+// ACLs can call chat. The Next.js SSR payload embeds JSON as escaped string
+// literals (\"apiKeyId\":\"…\", sometimes escaped twice); UUIDs never contain
 // backslashes, so dropping them yields plain JSON fragments to scan.
 func parseConsoleHome(data []byte) consoleHome {
 	text := string(bytes.ReplaceAll(data, []byte(`\`), nil))
@@ -272,9 +275,12 @@ func parseConsoleHome(data []byte) consoleHome {
 		if end-match[1] > consoleAPIKeyScanDistance {
 			end = match[1] + consoleAPIKeyScanDistance
 		}
-		// Console serializes disabled after apiKeyId in each key object, so the
-		// span up to the next key belongs to this key.
-		if consoleDisabledPattern.MatchString(text[match[1]:end]) {
+		// Console serializes disabled and aclStrings after apiKeyId in each key
+		// object, so the span up to the next key belongs to this key. The next
+		// key's name can appear in that span; its ACLs cannot, because they
+		// follow its own apiKeyId.
+		span := text[match[1]:end]
+		if consoleDisabledPattern.MatchString(span) || !consoleAPIKeyAllowsChat(span) {
 			continue
 		}
 		result.apiKeyID = strings.ToLower(text[match[2]:match[3]])
@@ -286,6 +292,14 @@ func parseConsoleHome(data []byte) consoleHome {
 		result.teamID = strings.ToLower(match[1])
 	}
 	return result
+}
+
+// consoleAPIKeyAllowsChat reports whether this key's ACL list can call
+// /v1/responses. endpoint:* is what the Console chat playground and
+// CreateApiKey both grant. endpoint:chat is accepted for a narrower key.
+// Image and video ACLs do not match either token.
+func consoleAPIKeyAllowsChat(span string) bool {
+	return strings.Contains(span, consoleAPIKeyACLEndpoint) || strings.Contains(span, "api-key:endpoint:chat")
 }
 
 func (a *Adapter) createConsoleAPIKey(ctx context.Context, credential account.Credential, ssoToken string, lease *infraegress.Lease, teamID string) error {
@@ -334,6 +348,13 @@ func consoleCreateAPIKeyBody(teamID string) []byte {
 func isConsoleMissingAPIKeyBody(body []byte) bool {
 	text := strings.ToLower(string(body))
 	return strings.Contains(text, "provision an api key") || strings.Contains(text, "not the owner")
+}
+
+// isConsoleChatEndpointDeniedBody is the 403 Console returns when x-apikey
+// belongs to the team but cannot call chat, which is what an Imagine-only key
+// does. It is repairable by selecting or creating a chat-capable key.
+func isConsoleChatEndpointDeniedBody(body []byte) bool {
+	return strings.Contains(strings.ToLower(string(body)), "access to the chat endpoint is denied")
 }
 
 func consoleOrigin(baseURL string) string {

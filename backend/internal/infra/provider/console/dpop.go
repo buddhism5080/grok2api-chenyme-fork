@@ -408,7 +408,7 @@ func (a *Adapter) doDPoPRequestWithOptions(
 			if readErr != nil {
 				return nil, readErr
 			}
-			if isConsoleMissingAPIKeyBody(data) {
+			if isConsoleMissingAPIKeyBody(data) || isConsoleChatEndpointDeniedBody(data) {
 				apiKeyRepaired = true
 				a.invalidateConsoleAPIKey(credential, ssoToken, apiKey)
 				if repaired, repairErr := a.consoleAPIKey(ctx, credential, ssoToken, lease, true); repairErr == nil && repaired != "" {
