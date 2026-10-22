@@ -54,6 +54,20 @@ function parseForbiddenCodes(value: string): string[] {
   return result;
 }
 
+function parseModelIDs(value: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of value.split(/[\n,]/)) {
+    const model = item.trim();
+    if (model === "") continue;
+    const key = model.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(model);
+  }
+  return result;
+}
+
 function validPublicAPIBaseURL(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.length === 0) return true;
