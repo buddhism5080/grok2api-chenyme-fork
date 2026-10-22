@@ -64,6 +64,15 @@ type responsesRequestError struct {
 
 func (e *responsesRequestError) Error() string { return e.Message }
 
+func emptyCallIDError(param, itemType string) *responsesRequestError {
+	kind := strings.TrimSpace(itemType)
+	message := param + ".call_id 不能为空"
+	if kind != "" {
+		message = param + " (" + kind + ").call_id 不能为空"
+	}
+	return &responsesRequestError{Message: message, Param: param + ".call_id", Code: "invalid_parameter"}
+}
+
 func newResponsesToolCompatibility() *responsesToolCompatibility {
 	return &responsesToolCompatibility{
 		aliases:         make(map[string]responsesToolIdentity),
