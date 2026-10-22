@@ -2174,7 +2174,7 @@ func (s *Service) forwardOwnedResponse(ctx context.Context, input ResourceInput,
 	var once sync.Once
 	release := func() { once.Do(lease.Release) }
 	finalize := func(Usage, string, string) { release() }
-	return &Result{StatusCode: response.StatusCode, Status: response.Status, Header: response.Header, Body: &finalizingBody{ReadCloser: response.Body, finalize: release}, Finalize: finalize}, nil
+	return &Result{StatusCode: response.StatusCode, Status: response.Status, Header: response.Header, Body: &finalizingBody{ReadCloser: response.Body, finalize: release}, Finalize: finalize, DropUpstreamConn: response.DropUpstreamConn}, nil
 }
 
 // markPermanentlyUnrefreshableCredentialRejected removes an account from the pool after a real upstream request confirms its access token is invalid.
