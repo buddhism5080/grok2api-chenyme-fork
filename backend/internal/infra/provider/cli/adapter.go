@@ -190,7 +190,10 @@ func newBuildDirectTransport(responseHeaderTimeout time.Duration) *buildDirectTr
 }
 
 func (t *buildDirectTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	return t.current.Load().RoundTrip(request)
+	request, retireConn := infraegress.WatchUpstreamConn(request)
+	response, err := t.current.Load().RoundTrip(request)
+	retireConn(response)
+	return response, err
 }
 
 func (t *buildDirectTransport) UpdateResponseHeaderTimeout(responseHeaderTimeout time.Duration) {
@@ -510,7 +513,15 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 			return &provider.Response{StatusCode: resp.StatusCode, Status: resp.Status, Header: resp.Header.Clone(), Body: resp.Body, UpstreamURL: reqURL, Diagnostic: diagnostic, ReasoningRecoveryFailed: reasoningRecovery.failed, RecoveredPrimaryFailure: recoveredPrimaryFailure, RecoveredAttempts: recoveredAttempts(recoveredPrimaryAttempt, reasoningRecovery), RateLimit: rateLimit, ModelCatalogChanged: modelCatalogChanged}, nil
 		}
 	}
-	return &provider.Response{StatusCode: resp.StatusCode, Status: resp.Status, Header: resp.Header.Clone(), Body: resp.Body, UpstreamURL: reqURL, Diagnostic: rateLimitDiagnostic, ReasoningRecoveryFailed: reasoningRecovery.failed, RecoveredPrimaryFailure: recoveredPrimaryFailure, RecoveredAttempts: recoveredAttempts(recoveredPrimaryAttempt, reasoningRecovery), RateLimit: rateLimit, ModelCatalogChanged: modelCatalogChanged}, nil
+	return annotateUpstreamConnDrop(resp, &provider.Response{StatusCode: resp.StatusCode, Status: resp.Status, Header: resp.Header.Clone(), Body: resp.Body, UpstreamURL: reqURL, Diagnostic: rateLimitDiagnostic, ReasoningRecoveryFailed: reasoningRecovery.failed, RecoveredPrimaryFailure: recoveredPrimaryFailure, RecoveredAttempts: recoveredAttempts(recoveredPrimaryAttempt, reasoningRecovery), RateLimit: rateLimit, ModelCatalogChanged: modelCatalogChanged}), nil
+}
+
+func annotateUpstreamConnDrop(resp *http.Response, out *provider.Response) *provider.Response {
+	if out == nil {
+		return nil
+	}
+	out.DropUpstreamConn = infraegress.UpstreamConnDropper(resp)
+	return out
 }
 
 // recoveredAttempts 按真实调用顺序汇总被 fallback 与 reasoning recovery 隐藏的失败。
