@@ -974,3 +974,42 @@ func TestBuildVideo15DiscoveredAsVideoCapability(t *testing.T) {
 		t.Fatalf("web video route = %#v, err = %v", webVideo, err)
 	}
 }
+
+func TestConsoleVideo15LiteIsVideoAndDropsDiscoveredResponses(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDatabase(t)
+	repo := NewModelRepository(database)
+	const upstream = "grok-imagine-video-1.5-lite"
+	if err := repo.UpsertDiscovered(ctx, account.ProviderConsole, []string{upstream}); err != nil {
+		t.Fatal(err)
+	}
+	var discovered []modelRouteModel
+	if err := database.db.WithContext(ctx).Where("provider = ? AND upstream_model = ?", account.ProviderConsole, upstream).Find(&discovered).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(discovered) != 1 || discovered[0].Capability != string(model.CapabilityVideo) {
+		t.Fatalf("discovered lite = %#v", discovered)
+	}
+	if err := repo.UpsertRoutes(ctx, []model.Route{{
+		PublicID: upstream, Provider: account.ProviderConsole, UpstreamModel: upstream,
+		Capability: model.CapabilityResponses, Enabled: true,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ReplaceProviderRoutes(ctx, account.ProviderConsole, []model.Route{{
+		PublicID: upstream, Provider: account.ProviderConsole, UpstreamModel: upstream,
+		Capability: model.CapabilityVideo, Enabled: true,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertDiscovered(ctx, account.ProviderConsole, []string{upstream}); err != nil {
+		t.Fatal(err)
+	}
+	var routes []modelRouteModel
+	if err := database.db.WithContext(ctx).Where("provider = ? AND upstream_model = ?", account.ProviderConsole, upstream).Find(&routes).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(routes) != 1 || routes[0].Capability != string(model.CapabilityVideo) {
+		t.Fatalf("reconciled lite = %#v", routes)
+	}
+}
