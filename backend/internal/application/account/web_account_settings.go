@@ -173,8 +173,8 @@ func (s *Service) webAccountSettings(ctx context.Context, id uint64) (accountdom
 	if err != nil {
 		return accountdomain.Credential{}, nil, mapRepositoryError(err)
 	}
-	if credential.Provider != accountdomain.ProviderWeb || credential.AuthType != accountdomain.AuthTypeSSO {
-		return accountdomain.Credential{}, nil, fmt.Errorf("%w: 仅 Grok Web SSO 账号支持该操作", ErrUnsupported)
+	if !webAccountScriptCredential(credential) {
+		return accountdomain.Credential{}, nil, fmt.Errorf("%w: 仅带 SSO 的 Grok Web 或 Console 账号支持该操作", ErrUnsupported)
 	}
 	if s.providers == nil {
 		return accountdomain.Credential{}, nil, fmt.Errorf("Grok Web Provider 未注册")
@@ -184,6 +184,13 @@ func (s *Service) webAccountSettings(ctx context.Context, id uint64) (accountdom
 		return accountdomain.Credential{}, nil, fmt.Errorf("%w: Grok Web Provider 不支持账号资料设置", ErrUnsupported)
 	}
 	return credential, adapter, nil
+}
+
+// webAccountScriptCredential 接受协议、生日和 NSFW 都打到 grok.com / accounts.x.ai，
+// 认证只用 SSO。Console 号池里的 SSO 与 Web 是同一份登录，不必先转成 Web 账号。
+func webAccountScriptCredential(credential accountdomain.Credential) bool {
+	return credential.AuthType == accountdomain.AuthTypeSSO &&
+		(credential.Provider == accountdomain.ProviderWeb || credential.Provider == accountdomain.ProviderConsole)
 }
 
 func (s *Service) runWebAccountSetting(ctx context.Context, credential accountdomain.Credential, operation string, run func() error) error {

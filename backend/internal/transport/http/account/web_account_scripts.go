@@ -67,7 +67,7 @@ func (h *Handler) runWebAccountScripts(c *gin.Context) {
 			return
 		}
 		ids = uniqueWebAccountScriptIDs(ids)
-		if !h.validateProviderIDs(c, ids, string(accountdomain.ProviderWeb)) {
+		if !h.validateWebAccountScriptIDs(c, ids) {
 			return
 		}
 	}
@@ -102,4 +102,16 @@ func uniqueWebAccountScriptIDs(ids []uint64) []uint64 {
 		result = append(result, id)
 	}
 	return result
+}
+
+func (h *Handler) validateWebAccountScriptIDs(c *gin.Context, ids []uint64) bool {
+	web, err := h.service.AccountsBelongToProvider(c.Request.Context(), ids, accountdomain.ProviderWeb)
+	if err != nil {
+		h.writeServiceError(c, "accountPoolValidationFailed", err, http.StatusInternalServerError, "校验账号号池失败")
+		return false
+	}
+	if web {
+		return true
+	}
+	return h.validateProviderIDs(c, ids, string(accountdomain.ProviderConsole))
 }

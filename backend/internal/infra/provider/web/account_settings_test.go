@@ -124,6 +124,12 @@ func TestWebAccountSettingsMapUnauthorized(t *testing.T) {
 	if !errors.Is(err, provider.ErrUnauthorized) {
 		t.Fatalf("err = %v", err)
 	}
+	err = adapter.AcceptTerms(context.Background(), account.Credential{
+		ID: 9, Provider: account.ProviderConsole, AuthType: account.AuthTypeSSO, EncryptedAccessToken: encryptedToken,
+	})
+	if !errors.Is(err, provider.ErrUnauthorized) {
+		t.Fatalf("console err = %v", err)
+	}
 }
 
 func TestAcceptTermsRequiresBothUpstreamSteps(t *testing.T) {

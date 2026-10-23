@@ -72,6 +72,26 @@ func TestWebAccountSettingsAreWebOnlyAndGenerateBirthDate(t *testing.T) {
 	if err := service.SetWebBirthDate(ctx, buildAccount.ID); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("build birth err = %v", err)
 	}
+	consoleAccount, _, err := repo.UpsertByIdentity(ctx, accountdomain.Credential{
+		Provider: accountdomain.ProviderConsole, AuthType: accountdomain.AuthTypeSSO,
+		Name: "console", SourceKey: "console", EncryptedAccessToken: "encrypted", Enabled: true, AuthStatus: accountdomain.AuthStatusActive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.AcceptWebTerms(ctx, consoleAccount.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.EnableWebNSFW(ctx, consoleAccount.ID); err != nil {
+		t.Fatal(err)
+	}
+	updatedConsole, err := repo.Get(ctx, consoleAccount.ID)
+	if err != nil || updatedConsole.Provider != accountdomain.ProviderConsole || updatedConsole.WebTermsAcceptedAt == nil || updatedConsole.WebBirthDateSetAt == nil || updatedConsole.WebNSFWEnabledAt == nil {
+		t.Fatalf("console markers = %#v, err = %v", updatedConsole, err)
+	}
+	if adapter.terms != 2 || adapter.nsfw != 2 {
+		t.Fatalf("console script did not run: terms=%d nsfw=%d", adapter.terms, adapter.nsfw)
+	}
 }
 
 func TestRandomWebBirthDateUsesInclusiveAgeRange(t *testing.T) {
