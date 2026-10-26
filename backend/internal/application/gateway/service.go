@@ -517,9 +517,10 @@ func (s *Service) UpdateMarkBuildChatDeniedAsReauth(enabled bool) {
 	s.markBuildChatDeniedAsReauth.Store(enabled)
 }
 
-// UpdateBuildMissingReasoningPenalty 热更新 Build 无推理输出的调度惩罚。
-// 默认关闭；开启后仅对指定公开模型 ID 生效。命中条件：HTTP 200、outputTokens>20、reasoningTokens=0。
-// userTurnModelIDs 中的模型额外要求最后一条输入是用户 prompt；工具调用结果轮次不惩罚。
+// UpdateBuildMissingReasoningPenalty 热更新无推理输出的调度惩罚。
+// 默认关闭。模型 ID 不加前缀时同时覆盖 Build 和 Console；Build/ 或 Console/ 只覆盖该渠道。
+// 命中条件：HTTP 200、outputTokens>20、reasoningTokens=0。
+// userTurnModelIDs 使用同一套前缀。其中的模型额外要求最后一条输入是用户 prompt；工具调用结果轮次不惩罚。
 func (s *Service) UpdateBuildMissingReasoningPenalty(enabled bool, modelIDs, userTurnModelIDs []string) {
 	models := make(map[string]struct{}, len(modelIDs))
 	for _, raw := range modelIDs {
@@ -1960,7 +1961,7 @@ func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, creden
 	if !missingReasoningPenaltyApplies(credential.Provider, record.StatusCode, record.OutputTokens, record.ReasoningTokens, modelID, policy.enabled, policy.models) {
 		return false
 	}
-	if missingReasoningUserTurnGateBlocks(modelID, policy.userTurnModels, body) {
+	if missingReasoningUserTurnGateBlocks(credential.Provider, modelID, policy.userTurnModels, body) {
 		return false
 	}
 	s.selector.RecordMissingReasoningPenalty(*record.AccountID, time.Now().UTC())

@@ -67,17 +67,36 @@ func missingReasoningPenaltyApplies(provider account.Provider, statusCode int, o
 	if !enabled || len(models) == 0 {
 		return false
 	}
-	if provider != account.ProviderBuild || statusCode != http.StatusOK {
+	if (provider != account.ProviderBuild && provider != account.ProviderConsole) || statusCode != http.StatusOK {
 		return false
 	}
 	if outputTokens <= missingReasoningOutputTokenMin || reasoningTokens != 0 {
 		return false
 	}
+	return missingReasoningModelWatched(provider, publicModel, models)
+}
+
+// missingReasoningModelWatched matches a public model ID. A configured ID with
+// no channel prefix covers Build and Console. Build/ or Console/ limits the
+// same public ID to that channel. Matching is case-insensitive.
+func missingReasoningModelWatched(provider account.Provider, publicModel string, models map[string]struct{}) bool {
 	model := strings.ToLower(strings.TrimSpace(publicModel))
-	if model == "" {
+	if model == "" || len(models) == 0 {
 		return false
 	}
-	_, ok := models[model]
+	if _, ok := models[model]; ok {
+		return true
+	}
+	prefix := ""
+	switch provider {
+	case account.ProviderBuild:
+		prefix = "build/"
+	case account.ProviderConsole:
+		prefix = "console/"
+	default:
+		return false
+	}
+	_, ok := models[prefix+model]
 	return ok
 }
 
@@ -112,11 +131,8 @@ func (s *Selector) RecordMissingReasoningPenalty(accountID uint64, now time.Time
 	}
 }
 
-func missingReasoningUserTurnGateBlocks(modelID string, userTurnModels map[string]struct{}, body []byte) bool {
-	if len(userTurnModels) == 0 {
-		return false
-	}
-	if _, ok := userTurnModels[modelID]; !ok {
+func missingReasoningUserTurnGateBlocks(provider account.Provider, modelID string, userTurnModels map[string]struct{}, body []byte) bool {
+	if !missingReasoningModelWatched(provider, modelID, userTurnModels) {
 		return false
 	}
 	return !lastConversationTurnIsUserPrompt(body)

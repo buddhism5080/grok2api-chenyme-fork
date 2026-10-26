@@ -21,6 +21,7 @@ func TestMissingReasoningPenaltyApplies(t *testing.T) {
 		reasoning int64
 		model     string
 		enabled   bool
+		watched   map[string]struct{}
 		want      bool
 	}{
 		{name: "build 200 output 21 no reasoning grok-4.6", provider: account.ProviderBuild, status: 200, output: 21, model: "grok-4.6", enabled: true, want: true},
@@ -30,6 +31,11 @@ func TestMissingReasoningPenaltyApplies(t *testing.T) {
 		{name: "has reasoning", provider: account.ProviderBuild, status: 200, output: 80, reasoning: 1, model: "grok-4.6", enabled: true},
 		{name: "not 200", provider: account.ProviderBuild, status: 499, output: 80, model: "grok-4.6", enabled: true},
 		{name: "web provider", provider: account.ProviderWeb, status: 200, output: 80, model: "grok-4.6", enabled: true},
+		{name: "console bare model covers both", provider: account.ProviderConsole, status: 200, output: 21, model: "grok-4.6", enabled: true, want: true},
+		{name: "build prefix hits build", provider: account.ProviderBuild, status: 200, output: 21, model: "grok-4.6", enabled: true, want: true, watched: map[string]struct{}{"build/grok-4.6": {}}},
+		{name: "build prefix misses console", provider: account.ProviderConsole, status: 200, output: 21, model: "grok-4.6", enabled: true, watched: map[string]struct{}{"build/grok-4.6": {}}},
+		{name: "console prefix hits console", provider: account.ProviderConsole, status: 200, output: 21, model: "grok-4.6", enabled: true, want: true, watched: map[string]struct{}{"console/grok-4.6": {}}},
+		{name: "console prefix misses build", provider: account.ProviderBuild, status: 200, output: 21, model: "grok-4.6", enabled: true, watched: map[string]struct{}{"console/grok-4.6": {}}},
 		{name: "other model", provider: account.ProviderBuild, status: 200, output: 80, model: "grok-4.20", enabled: true},
 		{name: "empty model list", provider: account.ProviderBuild, status: 200, output: 80, model: "grok-4.6", enabled: true},
 	}
@@ -38,6 +44,9 @@ func TestMissingReasoningPenaltyApplies(t *testing.T) {
 			watched := models
 			if test.name == "empty model list" {
 				watched = nil
+			}
+			if test.watched != nil {
+				watched = test.watched
 			}
 			got := missingReasoningPenaltyApplies(test.provider, test.status, test.output, test.reasoning, test.model, test.enabled, watched)
 			if got != test.want {
@@ -191,5 +200,31 @@ func TestMaybePenalizeToolResultStillHitsUngatedModels(t *testing.T) {
 	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6", toolBody)
 	if !selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
 		t.Fatal("models outside the user-turn list keep the original penalty")
+	}
+}
+
+func TestMaybePenalizeUserTurnPrefixIsChannelScoped(t *testing.T) {
+	selector, hot, _ := newFreeBuildUsagePenaltySelector(t)
+	service := &Service{selector: selector}
+	service.UpdateBuildMissingReasoningPenalty(true, []string{"grok-4.7"}, []string{"Console/grok-4.7"})
+	accountID := hot.ID
+	record := audit.Record{
+		StatusCode: http.StatusOK, OutputTokens: 21, ReasoningTokens: 0,
+		ModelPublicID: "grok-4.7", AccountID: &accountID,
+	}
+	toolBody := []byte(`{"input":[{"role":"user","content":"hi"},{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
+	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", toolBody) {
+		t.Fatal("Build/ is not in the user-turn list, so a bare watch id still penalizes Build tool turns")
+	}
+	selector.missingReasoningPenalty = newAccountPenaltyBook(0)
+	if service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderConsole}, "grok-4.7", toolBody) {
+		t.Fatal("Console/grok-4.7 must skip Console tool-result turns")
+	}
+	if selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
+		t.Fatal("Console tool-result turn must not latch a penalty")
+	}
+	userBody := []byte(`{"input":[{"role":"user","content":"write code"}]}`)
+	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderConsole}, "grok-4.7", userBody) {
+		t.Fatal("Console/grok-4.7 still penalizes a Console user-prompt turn")
 	}
 }
