@@ -25,6 +25,20 @@ func TestIsDefinitiveAccountBlockBody(t *testing.T) {
 	}
 }
 
+func TestIsCannotHelpRefusalBody(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"code":"permission-denied","error":"I'm sorry, I can't help with that request."}`)
+	if !IsCannotHelpRefusalBody(body) {
+		t.Fatal("model refusal must be recognized")
+	}
+	if IsCannotHelpRefusalBody([]byte(`{"code":"permission-denied","error":"Access to the chat endpoint is denied"}`)) {
+		t.Fatal("account permission denial is not this refusal")
+	}
+	if IsCannotHelpRefusalBody([]byte(`<!DOCTYPE html><title>Just a moment...</title>`)) {
+		t.Fatal("cloudflare challenge is not this refusal")
+	}
+}
+
 func TestIsDPoPProofRequiredBody(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -270,14 +270,15 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 		previous = currentPrevious
 		if upstream.StatusCode < 200 || upstream.StatusCode >= 300 {
 			if upstream.StatusCode == http.StatusForbidden {
-				// Preserve definitive account-block signals before a Statsig retry can discard the first response.
+				// Preserve definitive account-block signals, and return a model content
+				// refusal as-is. Neither is a clearance or Statsig failure.
 				body, readErr := io.ReadAll(io.LimitReader(upstream.Body, 4<<20))
 				_ = upstream.Body.Close()
 				if readErr != nil {
 					lease.Release()
 					return nil, readErr
 				}
-				if provider.IsDefinitiveAccountBlockBody(body) {
+				if provider.IsDefinitiveAccountBlockBody(body) || provider.IsCannotHelpRefusalBody(body) {
 					return &provider.Response{
 						StatusCode: upstream.StatusCode, Status: upstream.Status, Header: http.Header(upstream.Header),
 						UpstreamURL: responseUpstreamURL(upstream),

@@ -114,6 +114,10 @@ func TestHTTPUpstreamFailureClassifiesBuildForbiddenBodies(t *testing.T) {
 			safetyRejection: true, upstreamCode: "permission-denied",
 		},
 		{
+			name: "model cannot help", body: `{"code":"permission-denied","error":"I'm sorry, I can't help with that request."}`,
+			safetyRejection: true, upstreamCode: "permission-denied",
+		},
+		{
 			name: "explicit policy rejection", body: `{"code":"permission-denied","error":"request rejected by policy"}`,
 			requestScopedForbidden: true,
 			upstreamCode:           "permission-denied",
@@ -513,6 +517,13 @@ func TestTerminalRequestForbiddenRequiresExplicitRequestSignal(t *testing.T) {
 	for _, providerValue := range []accountdomain.Provider{accountdomain.ProviderBuild, accountdomain.ProviderWeb, accountdomain.ProviderConsole} {
 		if !isTerminalRequestForbidden(providerValue, safety) {
 			t.Fatalf("%s safety rejection must remain terminal", providerValue)
+		}
+	}
+
+	cannotHelp := newHTTPUpstreamFailure(http.StatusForbidden, []byte(`{"code":"permission-denied","error":"I'm sorry, I can't help with that request."}`), 1, "console")
+	for _, providerValue := range []accountdomain.Provider{accountdomain.ProviderBuild, accountdomain.ProviderWeb, accountdomain.ProviderConsole} {
+		if !cannotHelp.SafetyRejection || !isTerminalRequestForbidden(providerValue, cannotHelp) {
+			t.Fatalf("%s model refusal must return to the client, failure=%#v", providerValue, cannotHelp)
 		}
 	}
 }

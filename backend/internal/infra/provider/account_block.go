@@ -66,6 +66,19 @@ func IsDPoPProofRequiredText(value string) bool {
 	return strings.Contains(normalized, "unauthorized_dpop_required") || strings.Contains(normalized, "dpop_proof_required")
 }
 
+// IsCannotHelpRefusalBody reports the model content refusal
+// "I'm sorry, I can't help with that request." It is a property of the
+// request, not of the browser clearance or the selected account.
+func IsCannotHelpRefusalBody(body []byte) bool {
+	return IsCannotHelpRefusalText(string(body))
+}
+
+func IsCannotHelpRefusalText(value string) bool {
+	normalized := strings.ToLower(value)
+	normalized = strings.NewReplacer("\u2019", "'", "\u2018", "'").Replace(normalized)
+	return strings.Contains(normalized, "i'm sorry, i can't help with that request")
+}
+
 func jsonStringField(value map[string]any, key string) string {
 	result, _ := value[key].(string)
 	return result

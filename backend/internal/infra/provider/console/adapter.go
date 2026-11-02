@@ -292,10 +292,11 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 	return result, nil
 }
 
-// shouldInvalidateConsoleClearance keeps account-level and protocol-level
-// rejections from being misclassified as a broken browser/egress binding.
+// shouldInvalidateConsoleClearance keeps account-level, protocol-level, and
+// request-level model refusals from being misclassified as a broken
+// browser/egress binding.
 func shouldInvalidateConsoleClearance(body []byte) bool {
-	return !provider.IsDefinitiveAccountBlockBody(body) && !provider.IsDPoPProofRequiredBody(body)
+	return !provider.IsDefinitiveAccountBlockBody(body) && !provider.IsDPoPProofRequiredBody(body) && !provider.IsCannotHelpRefusalBody(body)
 }
 
 func normalizeConversationError(data []byte, operation string, status int) []byte {

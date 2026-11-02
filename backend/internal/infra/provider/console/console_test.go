@@ -1129,6 +1129,7 @@ func TestShouldInvalidateConsoleClearance(t *testing.T) {
 		{name: "dpop protocol rejection", body: `{"code":"unauthorized:dpop-required","error":"DPoP proof required"}`, want: false},
 		{name: "blocked account", body: `{"code":"unauthorized:blocked-user","error":"User is blocked"}`, want: false},
 		{name: "anti-bot rejection", body: `{"error":{"code":7,"message":"Request rejected by anti-bot rules."}}`, want: true},
+		{name: "model cannot help", body: `{"code":"permission-denied","error":"I'm sorry, I can't help with that request."}`, want: false},
 		{name: "generic forbidden", body: `forbidden`, want: true},
 	}
 	for _, test := range tests {

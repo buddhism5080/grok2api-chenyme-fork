@@ -300,7 +300,8 @@ func isSafetyRejection(text string) bool {
 	}
 	lower := strings.ToLower(text)
 	return strings.Contains(lower, "content violates usage guidelines") ||
-		strings.Contains(lower, "safety_check_type_")
+		strings.Contains(lower, "safety_check_type_") ||
+		provider.IsCannotHelpRefusalText(lower)
 }
 
 // isIncorrectAPIKeyText matches the upstream rejection of the credential sent
