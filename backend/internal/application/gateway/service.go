@@ -234,6 +234,8 @@ type Service struct {
 	qualityRetry                atomic.Pointer[QualityRetryRuntime]
 	buildMissingReasoningMu     sync.RWMutex
 	buildMissingReasoningPolicy buildMissingReasoningPolicy
+	sessionRotateOnce           sync.Once
+	sessionRotations            *sessionRotationBook
 }
 
 type teamModelRateLimit struct {
@@ -255,6 +257,9 @@ type buildMissingReasoningPolicy struct {
 	enabled        bool
 	models         map[string]struct{}
 	userTurnModels map[string]struct{}
+	// sessionRotate substitutes a fresh upstream session id on the next Build
+	// request after a missing-reasoning penalty, and again after each later hit.
+	sessionRotate bool
 }
 
 func (s *Service) ConfigureMedia(repository repository.MediaJobRepository, concurrency int) {
@@ -539,7 +544,8 @@ func (s *Service) UpdateBuildMissingReasoningPenalty(enabled bool, modelIDs, use
 		userTurnModels[value] = struct{}{}
 	}
 	s.buildMissingReasoningMu.Lock()
-	s.buildMissingReasoningPolicy = buildMissingReasoningPolicy{enabled: enabled, models: models, userTurnModels: userTurnModels}
+	rotate := s.buildMissingReasoningPolicy.sessionRotate
+	s.buildMissingReasoningPolicy = buildMissingReasoningPolicy{enabled: enabled, models: models, userTurnModels: userTurnModels, sessionRotate: rotate}
 	s.buildMissingReasoningMu.Unlock()
 }
 
@@ -1030,6 +1036,9 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 	affinityKey := ""
 	ownershipPromptCacheKey := ""
 	reasoningReplayKey := ""
+	// Base id stays on the ownership record. Rotation, when armed, replaces only
+	// the id sent upstream so the next turn of this same session can find it.
+	buildSessionBaseID := ""
 	if route.Provider == accountdomain.ProviderBuild {
 		// Derive a stable identity from explicit session signals, message anchors,
 		// and model. Composer replaces message-only fallback identities with an
@@ -1055,12 +1064,33 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 		affinityKey = identity.affinityKey
 		ownershipPromptCacheKey = identity.upstreamID
 		reasoningReplayKey = identity.replayKey
+		buildSessionBaseID = identity.upstreamID
+		if rotated, rewritten, ok := s.outboundRotatedBuildSession(identity.upstreamID, input.Body, time.Now().UTC()); ok {
+			input.PromptCacheKey = rotated
+			input.Body = rewritten
+		}
 		if identity.upstreamID == "" {
 			s.logger.Debug("prompt_cache_session_empty", "request_id", input.RequestID, "model", route.UpstreamModel, "provider", route.Provider)
 		} else if identity.soft {
 			s.logger.Debug("prompt_cache_session_soft", "request_id", input.RequestID, "model", route.UpstreamModel)
 		} else if identity.isolated {
 			s.logger.Debug("prompt_cache_session_isolated", "request_id", input.RequestID, "model", route.UpstreamModel)
+		}
+	} else if route.Provider == accountdomain.ProviderConsole {
+		// Console drops prompt_cache_key and metadata, and sends no Grok session
+		// headers. The key is still stable so a later penalty can rotate the
+		// session_id and conversation_id fields that survive normalization.
+		identity := resolveBuildSessionIdentity(
+			input.ClientKey.ID,
+			route.Provider,
+			route.UpstreamModel,
+			input.PromptCacheKey,
+			input.PromptCacheSeed,
+			input.Body,
+		)
+		buildSessionBaseID = identity.upstreamID
+		if rewritten, ok := s.outboundRotatedConsoleSession(identity.upstreamID, input.Body, time.Now().UTC()); ok {
+			input.Body = rewritten
 		}
 	}
 	adapter, ok := s.providers.Responses(route.Provider)
@@ -1224,7 +1254,7 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 				}
 				if successful {
 					_ = budget.run("missing_reasoning_penalty", finalizationMetadataBudget, func(stageCtx context.Context) error {
-						if s.maybePenalizeBuildMissingReasoning(record, credential, publicModel, input.Body) {
+						if s.maybePenalizeBuildMissingReasoning(record, credential, publicModel, input.Body, buildSessionBaseID) {
 							record.MissingReasoningPenalty = true
 						}
 						return nil
@@ -1947,7 +1977,7 @@ func isSSOCredentialRejected(err error, credential accountdomain.Credential) boo
 	return ok && status == http.StatusUnauthorized
 }
 
-func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, credential accountdomain.Credential, publicModel string, body []byte) bool {
+func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, credential accountdomain.Credential, publicModel string, body []byte, sessionKey string) bool {
 	if s == nil || s.selector == nil || record.AccountID == nil {
 		return false
 	}
@@ -1964,7 +1994,9 @@ func (s *Service) maybePenalizeBuildMissingReasoning(record audit.Record, creden
 	if missingReasoningUserTurnGateBlocks(credential.Provider, modelID, policy.userTurnModels, body) {
 		return false
 	}
-	s.selector.RecordMissingReasoningPenalty(*record.AccountID, time.Now().UTC())
+	now := time.Now().UTC()
+	s.selector.RecordMissingReasoningPenalty(*record.AccountID, now)
+	s.noteBuildSessionPenalty(credential.Provider, sessionKey, now)
 	logger := s.logger
 	if logger == nil {
 		logger = slog.Default()

@@ -155,7 +155,10 @@ type RoutingConfig struct {
 	// BuildMissingReasoningPenaltyUserTurnModelIDs 仅在最后一条输入是用户 prompt 时惩罚的模型。
 	// 空列表表示不额外按轮次过滤。
 	BuildMissingReasoningPenaltyUserTurnModelIDs []string
-	SegmentedSelector                            *SegmentedSelectorConfig
+	// BuildMissingReasoningSessionRotateEnabled 为 true 时，Build 会话触发无推理调度惩罚后，
+	// 从下一次请求起向上游改发新的会话 id。旧载荷省略该字段时保留现有值。
+	BuildMissingReasoningSessionRotateEnabled *bool
+	SegmentedSelector                         *SegmentedSelectorConfig
 }
 
 type SegmentedSelectorConfig struct {

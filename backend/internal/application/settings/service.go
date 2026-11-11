@@ -116,6 +116,8 @@ type RoutingConfig struct {
 	BuildMissingReasoningPenaltyUserTurnModelIDsProvided bool
 	BuildMissingReasoningPenaltyEnabled                  bool
 	BuildMissingReasoningPenaltyEnabledProvided          bool
+	BuildMissingReasoningSessionRotateEnabled            bool
+	BuildMissingReasoningSessionRotateEnabledProvided    bool
 	BuildMissingReasoningPenaltyModelIDs                 []string
 	BuildMissingReasoningPenaltyModelIDsProvided         bool
 	BuildUsagePenaltyTokenThreshold                      int64
@@ -417,6 +419,10 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 	if value.Routing.BuildMissingReasoningPenaltyEnabled != nil {
 		buildMissingReasoningPenaltyEnabled = *value.Routing.BuildMissingReasoningPenaltyEnabled
 	}
+	buildMissingReasoningSessionRotateEnabled := base.Routing.BuildMissingReasoningSessionRotateEnabled
+	if value.Routing.BuildMissingReasoningSessionRotateEnabled != nil {
+		buildMissingReasoningSessionRotateEnabled = *value.Routing.BuildMissingReasoningSessionRotateEnabled
+	}
 	buildMissingReasoningPenaltyModelIDs := append([]string(nil), base.Routing.BuildMissingReasoningPenaltyModelIDs...)
 	if value.Routing.BuildMissingReasoningPenaltyModelIDs != nil {
 		buildMissingReasoningPenaltyModelIDs = append([]string(nil), value.Routing.BuildMissingReasoningPenaltyModelIDs...)
@@ -435,6 +441,7 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 		CooldownMax: config.Duration(value.Routing.CooldownMax), CapacityWait: config.Duration(capacityWait), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
 		BuildMissingReasoningPenaltyUserTurnModelIDs: normalizeWatchedModelIDs(buildMissingReasoningPenaltyUserTurnModelIDs),
 		BuildMissingReasoningPenaltyEnabled:          buildMissingReasoningPenaltyEnabled,
+		BuildMissingReasoningSessionRotateEnabled:    buildMissingReasoningSessionRotateEnabled,
 		BuildMissingReasoningPenaltyModelIDs:         normalizeWatchedModelIDs(buildMissingReasoningPenaltyModelIDs),
 		BuildUsagePenaltyTokenThreshold:              value.Routing.BuildUsagePenaltyTokenThreshold,
 		MarkBuildChatDeniedAsReauth:                  value.Routing.MarkBuildChatDeniedAsReauth,
@@ -488,6 +495,7 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 	randomDelay := value.Batch.RandomDelay.Value()
 	accountIsolatedConnections := value.Routing.AccountIsolatedConnections
 	buildMissingReasoningPenaltyEnabled := value.Routing.BuildMissingReasoningPenaltyEnabled
+	buildMissingReasoningSessionRotateEnabled := value.Routing.BuildMissingReasoningSessionRotateEnabled
 	autoDisableDegradedAccounts := value.QualityGuard.RequestRetry.AutoDisable
 	return settingsdomain.Config{
 		Server: settingsdomain.ServerConfig{MaxConcurrentRequests: value.Server.MaxConcurrentRequests},
@@ -534,6 +542,7 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 			CooldownMax: value.Routing.CooldownMax.Value(), CapacityWait: value.Routing.CapacityWait.Value(), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
 			BuildMissingReasoningPenaltyUserTurnModelIDs: append([]string(nil), value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs...),
 			BuildMissingReasoningPenaltyEnabled:          &buildMissingReasoningPenaltyEnabled,
+			BuildMissingReasoningSessionRotateEnabled:    &buildMissingReasoningSessionRotateEnabled,
 			BuildMissingReasoningPenaltyModelIDs:         append([]string(nil), value.Routing.BuildMissingReasoningPenaltyModelIDs...),
 			BuildUsagePenaltyTokenThreshold:              value.Routing.BuildUsagePenaltyTokenThreshold,
 			MarkBuildChatDeniedAsReauth:                  value.Routing.MarkBuildChatDeniedAsReauth,
@@ -639,6 +648,9 @@ func mergeEditable(current config.Config, input EditableConfig) (config.Config, 
 	}
 	if input.Routing.BuildMissingReasoningPenaltyEnabledProvided {
 		next.Routing.BuildMissingReasoningPenaltyEnabled = input.Routing.BuildMissingReasoningPenaltyEnabled
+	}
+	if input.Routing.BuildMissingReasoningSessionRotateEnabledProvided {
+		next.Routing.BuildMissingReasoningSessionRotateEnabled = input.Routing.BuildMissingReasoningSessionRotateEnabled
 	}
 	if input.Routing.BuildMissingReasoningPenaltyModelIDsProvided {
 		next.Routing.BuildMissingReasoningPenaltyModelIDs = normalizeWatchedModelIDs(input.Routing.BuildMissingReasoningPenaltyModelIDs)
@@ -803,6 +815,8 @@ func toEditable(cfg config.Config) EditableConfig {
 			BuildMissingReasoningPenaltyUserTurnModelIDsProvided: true,
 			BuildMissingReasoningPenaltyEnabled:                  cfg.Routing.BuildMissingReasoningPenaltyEnabled,
 			BuildMissingReasoningPenaltyEnabledProvided:          true,
+			BuildMissingReasoningSessionRotateEnabled:            cfg.Routing.BuildMissingReasoningSessionRotateEnabled,
+			BuildMissingReasoningSessionRotateEnabledProvided:    true,
 			BuildMissingReasoningPenaltyModelIDs:                 append([]string(nil), cfg.Routing.BuildMissingReasoningPenaltyModelIDs...),
 			BuildMissingReasoningPenaltyModelIDsProvided:         true,
 			BuildUsagePenaltyTokenThreshold:                      cfg.Routing.BuildUsagePenaltyTokenThreshold,

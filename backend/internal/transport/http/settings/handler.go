@@ -102,6 +102,7 @@ type batchConfigDTO struct {
 type routingConfigDTO struct {
 	BuildMissingReasoningPenaltyUserTurnModelIDs *[]string                   `json:"buildMissingReasoningPenaltyUserTurnModelIDs,omitempty"`
 	BuildMissingReasoningPenaltyEnabled          *bool                       `json:"buildMissingReasoningPenaltyEnabled,omitempty"`
+	BuildMissingReasoningSessionRotateEnabled    *bool                       `json:"buildMissingReasoningSessionRotateEnabled,omitempty"`
 	BuildMissingReasoningPenaltyModelIDs         *[]string                   `json:"buildMissingReasoningPenaltyModelIDs,omitempty"`
 	BuildUsagePenaltyTokenThreshold              *int64                      `json:"buildUsagePenaltyTokenThreshold,omitempty"`
 	StickyTTL                                    string                      `json:"stickyTTL"`
@@ -243,6 +244,8 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 			BuildMissingReasoningPenaltyUserTurnModelIDsProvided: value.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs != nil,
 			BuildMissingReasoningPenaltyEnabled:                  boolValue(value.Routing.BuildMissingReasoningPenaltyEnabled),
 			BuildMissingReasoningPenaltyEnabledProvided:          value.Routing.BuildMissingReasoningPenaltyEnabled != nil,
+			BuildMissingReasoningSessionRotateEnabled:            boolValue(value.Routing.BuildMissingReasoningSessionRotateEnabled),
+			BuildMissingReasoningSessionRotateEnabledProvided:    value.Routing.BuildMissingReasoningSessionRotateEnabled != nil,
 			BuildMissingReasoningPenaltyModelIDs:                 stringSliceValue(value.Routing.BuildMissingReasoningPenaltyModelIDs),
 			BuildMissingReasoningPenaltyModelIDsProvided:         value.Routing.BuildMissingReasoningPenaltyModelIDs != nil,
 			BuildUsagePenaltyTokenThreshold:                      int64Value(value.Routing.BuildUsagePenaltyTokenThreshold),
@@ -339,6 +342,7 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 				CooldownMax: config.Routing.CooldownMax, CapacityWait: config.Routing.CapacityWait, MaxAttempts: config.Routing.MaxAttempts, VideoMaxAttempts: config.Routing.VideoMaxAttempts,
 				BuildMissingReasoningPenaltyUserTurnModelIDs: stringSlicePointer(config.Routing.BuildMissingReasoningPenaltyUserTurnModelIDs),
 				BuildMissingReasoningPenaltyEnabled:          boolPointer(config.Routing.BuildMissingReasoningPenaltyEnabled),
+				BuildMissingReasoningSessionRotateEnabled:    boolPointer(config.Routing.BuildMissingReasoningSessionRotateEnabled),
 				BuildMissingReasoningPenaltyModelIDs:         stringSlicePointer(config.Routing.BuildMissingReasoningPenaltyModelIDs),
 				BuildUsagePenaltyTokenThreshold:              int64Pointer(config.Routing.BuildUsagePenaltyTokenThreshold),
 				MarkBuildChatDeniedAsReauth:                  boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),

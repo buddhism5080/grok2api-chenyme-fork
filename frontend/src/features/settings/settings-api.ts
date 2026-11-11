@@ -24,6 +24,7 @@ export type SettingsConfigDTO = {
     accountIsolatedConnections: boolean;
     buildUsagePenaltyTokenThreshold: number;
     buildMissingReasoningPenaltyEnabled: boolean;
+    buildMissingReasoningSessionRotateEnabled: boolean;
     buildMissingReasoningPenaltyModelIDs: string[];
     buildMissingReasoningPenaltyUserTurnModelIDs: string[];
     segmentedSelector: { enabled: boolean; minCandidates: number; windowSize: number };
@@ -138,6 +139,7 @@ const settingsConfigValidator = hasShape({
     accountIsolatedConnections: isOptional(isBoolean),
     buildUsagePenaltyTokenThreshold: isOptional(isNumber),
     buildMissingReasoningPenaltyEnabled: isOptional(isBoolean),
+    buildMissingReasoningSessionRotateEnabled: isOptional(isBoolean),
     buildMissingReasoningPenaltyModelIDs: isOptional(isArrayOf(isString)),
     buildMissingReasoningPenaltyUserTurnModelIDs: isOptional(isArrayOf(isString)),
     segmentedSelector: isOptional(hasShape({ enabled: isBoolean, minCandidates: isNumber, windowSize: isNumber })),
@@ -202,6 +204,7 @@ function withSettingsDefaults(snapshot: SettingsSnapshotDTO): SettingsSnapshotDT
         accountIsolatedConnections: snapshot.config.routing.accountIsolatedConnections ?? false,
         buildUsagePenaltyTokenThreshold: snapshot.config.routing.buildUsagePenaltyTokenThreshold ?? 0,
         buildMissingReasoningPenaltyEnabled: snapshot.config.routing.buildMissingReasoningPenaltyEnabled ?? false,
+        buildMissingReasoningSessionRotateEnabled: snapshot.config.routing.buildMissingReasoningSessionRotateEnabled ?? false,
         buildMissingReasoningPenaltyModelIDs: snapshot.config.routing.buildMissingReasoningPenaltyModelIDs ?? ["grok-4.6"],
         buildMissingReasoningPenaltyUserTurnModelIDs: snapshot.config.routing.buildMissingReasoningPenaltyUserTurnModelIDs ?? [],
         segmentedSelector: {

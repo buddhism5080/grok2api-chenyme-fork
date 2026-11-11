@@ -115,7 +115,7 @@ func TestMaybePenalizeBuildMissingReasoning(t *testing.T) {
 		StatusCode: http.StatusOK, OutputTokens: 21, ReasoningTokens: 0,
 		ModelPublicID: "grok-4.6", AccountID: &accountID,
 	}
-	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6", nil) {
+	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6", nil, "") {
 		t.Fatal("matching 200/no-reasoning request should report an audit penalty")
 	}
 	if !selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
@@ -126,7 +126,7 @@ func TestMaybePenalizeBuildMissingReasoning(t *testing.T) {
 	other.UpdateBuildMissingReasoningPenalty(true, []string{"grok-4.6"}, nil)
 	coldID := uint64(99)
 	skip := audit.Record{StatusCode: http.StatusOK, OutputTokens: 21, ReasoningTokens: 4, ModelPublicID: "grok-4.6", AccountID: &coldID}
-	if other.maybePenalizeBuildMissingReasoning(skip, account.Credential{ID: 99, Provider: account.ProviderBuild}, "grok-4.6", nil) {
+	if other.maybePenalizeBuildMissingReasoning(skip, account.Credential{ID: 99, Provider: account.ProviderBuild}, "grok-4.6", nil, "") {
 		t.Fatal("reasoning tokens > 0 must not report an audit penalty")
 	}
 	if selector.schedulingPenalized(99, time.Now().UTC()) {
@@ -173,13 +173,13 @@ func TestMaybePenalizeSkipsToolResultTurnsForUserTurnModels(t *testing.T) {
 		ModelPublicID: "grok-4.7", AccountID: &accountID,
 	}
 	toolBody := []byte(`{"input":[{"role":"user","content":"hi"},{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
-	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", toolBody)
+	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", toolBody, "")
 	if selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
 		t.Fatal("tool-result last turn must not penalize user-turn models")
 	}
 
 	userBody := []byte(`{"input":[{"role":"user","content":"write code"}]}`)
-	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", userBody) {
+	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", userBody, "") {
 		t.Fatal("user-prompt last turn should still report an audit penalty")
 	}
 	if !selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
@@ -197,7 +197,7 @@ func TestMaybePenalizeToolResultStillHitsUngatedModels(t *testing.T) {
 		ModelPublicID: "grok-4.6", AccountID: &accountID,
 	}
 	toolBody := []byte(`{"messages":[{"role":"tool","tool_call_id":"c1","content":"done"}]}`)
-	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6", toolBody)
+	service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.6", toolBody, "")
 	if !selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
 		t.Fatal("models outside the user-turn list keep the original penalty")
 	}
@@ -213,18 +213,18 @@ func TestMaybePenalizeUserTurnPrefixIsChannelScoped(t *testing.T) {
 		ModelPublicID: "grok-4.7", AccountID: &accountID,
 	}
 	toolBody := []byte(`{"input":[{"role":"user","content":"hi"},{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
-	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", toolBody) {
+	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderBuild}, "grok-4.7", toolBody, "") {
 		t.Fatal("Build/ is not in the user-turn list, so a bare watch id still penalizes Build tool turns")
 	}
 	selector.missingReasoningPenalty = newAccountPenaltyBook(0)
-	if service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderConsole}, "grok-4.7", toolBody) {
+	if service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderConsole}, "grok-4.7", toolBody, "") {
 		t.Fatal("Console/grok-4.7 must skip Console tool-result turns")
 	}
 	if selector.schedulingPenalized(hot.ID, time.Now().UTC()) {
 		t.Fatal("Console tool-result turn must not latch a penalty")
 	}
 	userBody := []byte(`{"input":[{"role":"user","content":"write code"}]}`)
-	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderConsole}, "grok-4.7", userBody) {
+	if !service.maybePenalizeBuildMissingReasoning(record, account.Credential{ID: hot.ID, Provider: account.ProviderConsole}, "grok-4.7", userBody, "") {
 		t.Fatal("Console/grok-4.7 still penalizes a Console user-prompt turn")
 	}
 }

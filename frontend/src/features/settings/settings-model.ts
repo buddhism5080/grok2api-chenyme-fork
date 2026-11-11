@@ -168,6 +168,7 @@ export const settingsSchema = z.object({
     accountIsolatedConnections: z.boolean(),
     buildUsagePenaltyTokenThreshold: z.number().int().min(0).max(1_000_000_000_000),
     buildMissingReasoningPenaltyEnabled: z.boolean(),
+    buildMissingReasoningSessionRotateEnabled: z.boolean(),
     buildMissingReasoningPenaltyModelIDs: z.string().superRefine((value, context) => {
       const models = parseModelIDs(value);
       if (models.length > 64 || models.some((model) => model.length === 0 || model.length > 128)) {
@@ -253,6 +254,7 @@ export function toSettingsForm(config: SettingsConfigDTO): SettingsForm {
       accountIsolatedConnections: config.routing.accountIsolatedConnections,
       buildUsagePenaltyTokenThreshold: config.routing.buildUsagePenaltyTokenThreshold ?? 0,
       buildMissingReasoningPenaltyEnabled: config.routing.buildMissingReasoningPenaltyEnabled ?? false,
+      buildMissingReasoningSessionRotateEnabled: config.routing.buildMissingReasoningSessionRotateEnabled ?? false,
       buildMissingReasoningPenaltyModelIDs: (config.routing.buildMissingReasoningPenaltyModelIDs ?? []).join("\n"),
       buildMissingReasoningPenaltyUserTurnModelIDs: (config.routing.buildMissingReasoningPenaltyUserTurnModelIDs ?? []).join("\n"),
       segmentedSelector: config.routing.segmentedSelector,
@@ -308,6 +310,7 @@ export function toSettingsDTO(config: SettingsForm): SettingsConfigDTO {
       accountIsolatedConnections: config.routing.accountIsolatedConnections,
       buildUsagePenaltyTokenThreshold: config.routing.buildUsagePenaltyTokenThreshold,
       buildMissingReasoningPenaltyEnabled: config.routing.buildMissingReasoningPenaltyEnabled,
+      buildMissingReasoningSessionRotateEnabled: config.routing.buildMissingReasoningSessionRotateEnabled,
       buildMissingReasoningPenaltyModelIDs: parseModelIDs(config.routing.buildMissingReasoningPenaltyModelIDs),
       buildMissingReasoningPenaltyUserTurnModelIDs: parseModelIDs(config.routing.buildMissingReasoningPenaltyUserTurnModelIDs),
       segmentedSelector: config.routing.segmentedSelector,

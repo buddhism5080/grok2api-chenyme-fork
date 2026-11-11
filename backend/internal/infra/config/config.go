@@ -235,15 +235,19 @@ type RoutingConfig struct {
 	// only receive the penalty when the last conversation turn is a user prompt.
 	// Tool-result turns are skipped. Empty means no extra last-turn gate.
 	BuildMissingReasoningPenaltyUserTurnModelIDs []string `yaml:"buildMissingReasoningPenaltyUserTurnModelIDs"`
-	BuildUsagePenaltyTokenThreshold              int64    `yaml:"buildUsagePenaltyTokenThreshold"`
-	MarkBuildChatDeniedAsReauth                  bool     `yaml:"markBuildChatDeniedAsReauth"`
-	AccountIsolatedConnections                   bool     `yaml:"accountIsolatedConnections"`
-	SegmentedSelectorEnabled                     bool     `yaml:"segmentedSelectorEnabled"`
-	SegmentedMinCandidates                       int      `yaml:"segmentedSelectorMinCandidates"`
-	SegmentedWindowSize                          int      `yaml:"segmentedSelectorWindowSize"`
-	ReasoningReplayEnabled                       bool     `yaml:"reasoningReplayEnabled"`
-	ReasoningReplayTTL                           Duration `yaml:"reasoningReplayTTL"`
-	ReasoningReplayMaxEntries                    int      `yaml:"reasoningReplayMaxEntries"`
+	// BuildMissingReasoningSessionRotateEnabled sends a fresh Build upstream
+	// session id on the request after a missing-reasoning penalty, and again
+	// after every later penalty for that session. Default false.
+	BuildMissingReasoningSessionRotateEnabled bool     `yaml:"buildMissingReasoningSessionRotateEnabled"`
+	BuildUsagePenaltyTokenThreshold           int64    `yaml:"buildUsagePenaltyTokenThreshold"`
+	MarkBuildChatDeniedAsReauth               bool     `yaml:"markBuildChatDeniedAsReauth"`
+	AccountIsolatedConnections                bool     `yaml:"accountIsolatedConnections"`
+	SegmentedSelectorEnabled                  bool     `yaml:"segmentedSelectorEnabled"`
+	SegmentedMinCandidates                    int      `yaml:"segmentedSelectorMinCandidates"`
+	SegmentedWindowSize                       int      `yaml:"segmentedSelectorWindowSize"`
+	ReasoningReplayEnabled                    bool     `yaml:"reasoningReplayEnabled"`
+	ReasoningReplayTTL                        Duration `yaml:"reasoningReplayTTL"`
+	ReasoningReplayMaxEntries                 int      `yaml:"reasoningReplayMaxEntries"`
 	// AutoAssignMaxNodeShare optionally caps how many active accounts one
 	// healthy node may absorb during auto assignment. 0 keeps the historical
 	// unbounded first-pass evacuation. Values in [0.05, 1] are a fraction of
@@ -970,6 +974,7 @@ func defaultConfig() Config {
 		Routing: RoutingConfig{
 			BuildMissingReasoningPenaltyUserTurnModelIDs: nil,
 			BuildMissingReasoningPenaltyEnabled:          false,
+			BuildMissingReasoningSessionRotateEnabled:    false,
 			BuildMissingReasoningPenaltyModelIDs:         []string{"grok-4.6"},
 			BuildUsagePenaltyTokenThreshold:              0,
 			StickyTTL:                                    Duration(time.Hour),
