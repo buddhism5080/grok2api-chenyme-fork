@@ -1451,6 +1451,9 @@ func TestShouldSkipXAIFallbackForSafetyAndBlocked(t *testing.T) {
 	if shouldSkipXAIFallback([]byte(`{"code":"permission-denied","error":"Access to the chat endpoint is denied"}`)) {
 		t.Fatal("ordinary permission denial may still probe XAI for Super Auto accounts")
 	}
+	if !shouldSkipXAIFallback([]byte(`{"code":"permission-denied","error":"I'm sorry, I can't help with that request."}`)) {
+		t.Fatal("model refusal must skip XAI fallback")
+	}
 }
 
 func TestParseBuildTeamRPSRateLimitMetadata(t *testing.T) {

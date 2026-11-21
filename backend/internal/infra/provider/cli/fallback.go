@@ -181,12 +181,13 @@ func isDefinitiveAccountBlockBody(body []byte) bool {
 	return strings.Contains(code, "blocked-user") || message == "user is blocked"
 }
 
-// isSafetyRejectionBody detects request-level content safety denials that must not
-// trigger XAI plane fallback or account rotation.
+// isSafetyRejectionBody detects request-level content safety denials and model
+// refusals that must not trigger XAI plane fallback or account rotation.
 func isSafetyRejectionBody(body []byte) bool {
 	lower := strings.ToLower(string(body))
 	return strings.Contains(lower, "content violates usage guidelines") ||
-		strings.Contains(lower, "safety_check_type_")
+		strings.Contains(lower, "safety_check_type_") ||
+		provider.IsCannotHelpRefusalBody(body)
 }
 
 // shouldSkipXAIFallback reports whether a primary 403 body is terminal for the request.

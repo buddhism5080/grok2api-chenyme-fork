@@ -194,10 +194,11 @@ func (a *Adapter) GenerateVideo(ctx context.Context, request provider.VideoReque
 	if !asVideoUpstreamError(createErr, &upstream) || !isHTTPForbidden(upstream.status) {
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoCreateFailureStage(createErr), 0, createErr)
 	}
-	if routeMode == account.BuildRouteBuild || !xaiEligible {
+	if routeMode == account.BuildRouteBuild || !xaiEligible || provider.IsCannotHelpRefusalText(createErr.Error()) {
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoCreateFailureStage(createErr), 0, createErr)
 	}
 	// 已确认 Super 的主地址 403：签发 upload_url 后探测 XAI；创建成功才标记降级。
+	// 模型拒绝是请求属性，换平面或换号都不会改变结果。
 	return a.generateVideoOnXAI(ctx, request, credential, accessToken, true)
 }
 
